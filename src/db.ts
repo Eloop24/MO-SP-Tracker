@@ -9,11 +9,21 @@ pg.types.setTypeParser(1700, (v) => (v == null ? null : parseFloat(v)));
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is not set. Copy .env.example to .env.');
 
-// Railway Postgres requires SSL; local does not.
-const needSSL = /railway|rlwy|amazonaws|sslmode=require/.test(connectionString) || process.env.PGSSL === 'true';
+// Local Postgres (localhost) needs no SSL; hosted providers (Railway, etc.) do.
+// Default: SSL on unless the host is localhost/127.0.0.1, or explicitly disabled with PGSSL=false.
+function wantSSL(conn: string): boolean {
+  if (process.env.PGSSL === 'false') return false;
+  if (process.env.PGSSL === 'true') return true;
+  try {
+    const host = new URL(conn).hostname;
+    return !(host === 'localhost' || host === '127.0.0.1' || host === '::1');
+  } catch {
+    return false;
+  }
+}
 export const pool = new pg.Pool({
   connectionString,
-  ssl: needSSL ? { rejectUnauthorized: false } : undefined,
+  ssl: wantSSL(connectionString) ? { rejectUnauthorized: false } : undefined,
 });
 
 export async function query<T = any>(text: string, params?: any[]): Promise<{ rows: T[]; rowCount: number }> {

@@ -9,14 +9,15 @@
   },
   "scripts": {
     "build:client": "esbuild shared/domain.ts --bundle --format=esm --outfile=public/domain.js",
-    "build:server": "tsc -p tsconfig.json",
+    "build:server": "esbuild src/auth.ts src/db.ts src/importers.ts src/migrate.ts src/routes.ts src/seed.ts src/seed-if-empty.ts src/server.ts shared/domain.ts --platform=node --format=esm --outdir=dist --outbase=. --sourcemap",
     "build": "npm run build:client && npm run build:server",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "migrate": "tsx src/migrate.ts",
     "seed": "tsx src/seed.ts",
     "migrate:prod": "node dist/src/migrate.js",
     "seed:prod": "node dist/src/seed.js",
     "dev": "tsx watch src/server.ts",
-    "start": "node dist/src/migrate.js && node dist/src/seed-if-empty.js && node dist/src/server.js",
+    "start": "node dist/src/server.js",
     "test": "vitest run",
     "postinstall": "npm run build:client"
   },
@@ -27,7 +28,8 @@
     "express-session": "^1.18.1",
     "multer": "^1.4.5-lts.1",
     "pg": "^8.13.1",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "esbuild": "^0.24.2"
   },
   "devDependencies": {
     "@types/connect-pg-simple": "^7.0.3",
@@ -36,7 +38,6 @@
     "@types/multer": "^1.4.12",
     "@types/node": "^22.10.2",
     "@types/pg": "^8.11.10",
-    "esbuild": "^0.24.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

@@ -3,6 +3,8 @@ import express from 'express';
 import { join } from 'node:path';
 import { sessionMiddleware, requireAuth, login, logout, status } from './auth.js';
 import { api } from './routes.js';
+import { runMigrations } from './migrate.js';
+import { seedIfEmpty } from './seed-if-empty.js';
 
 // Anchor to the working directory so the path is correct in dev (tsx from src/)
 // and in production (compiled to dist/). Railway runs from the repo root.
@@ -26,5 +28,26 @@ app.use('/api', requireAuth, api);
 app.use(express.static(publicDir));
 app.get('*', (_req, res) => res.sendFile(join(publicDir, 'index.html')));
 
-const port = Number(process.env.PORT) || 3000;
-app.listen(port, () => console.log(`ND SP Tracker listening on http://localhost:${port}`));
+// Run DB migrations + first-boot seed in-process, then always start listening.
+// Retry a few times in case the database isn't accepting connections yet on a
+// fresh deploy. If it never succeeds we still bind the port (so the health check
+// passes and the error is visible in logs) rather than crash-looping.
+async function start() {
+  let initialized = false;
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    try {
+      await runMigrations();
+      await seedIfEmpty();
+      initialized = true;
+      break;
+    } catch (e) {
+      console.error(`DB init attempt ${attempt}/5 failed:`, e instanceof Error ? e.message : e);
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+  if (!initialized) console.error('DB init did not complete — starting server anyway; API calls will error until the database is reachable.');
+
+  const port = Number(process.env.PORT) || 3000;
+  app.listen(port, '0.0.0.0', () => console.log(`ND SP Tracker listening on :${port}`));
+}
+start();

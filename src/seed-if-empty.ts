@@ -4,16 +4,15 @@ import { loadStateInto, SEED_PATH } from './seed.js';
 import type { AppState } from '../shared/domain.js';
 
 /**
- * Runs at startup (after migrations). Loads seed/initial-data.json ONLY when the
- * database is empty (no properties), so the first deploy is populated automatically
- * and subsequent deploys never wipe live data. Idempotent and safe to run every boot.
+ * Loads seed/initial-data.json ONLY when the database is empty (no properties),
+ * so the first deploy is populated automatically and later deploys never wipe
+ * live data. Uses the shared pool; does NOT close it. Idempotent.
  */
-async function run() {
+export async function seedIfEmpty(): Promise<void> {
   const r = await query<{ n: number }>('select count(*)::int as n from properties');
   const n = r.rows[0]?.n ?? 0;
   if (n > 0) {
     console.log(`seed-if-empty: ${n} properties already present — skipping seed`);
-    await pool.end();
     return;
   }
   console.log('seed-if-empty: empty database — loading seed/initial-data.json');
@@ -29,8 +28,10 @@ async function run() {
     throw e;
   } finally {
     client.release();
-    await pool.end();
   }
 }
 
-run().catch((e) => { console.error(e); process.exit(1); });
+// CLI entrypoint: seed-if-empty then close the pool.
+if (process.argv[1] && (process.argv[1].endsWith('seed-if-empty.ts') || process.argv[1].endsWith('seed-if-empty.js'))) {
+  seedIfEmpty().then(() => pool.end()).catch((e) => { console.error(e); process.exit(1); });
+}

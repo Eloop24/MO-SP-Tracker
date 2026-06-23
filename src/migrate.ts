@@ -4,7 +4,8 @@ import { pool } from './db.js';
 
 const migrationsDir = join(process.cwd(), 'migrations');
 
-async function run() {
+/** Apply any pending migrations. Uses the shared pool; does NOT close it. */
+export async function runMigrations(): Promise<void> {
   await pool.query('create table if not exists _migrations (name text primary key, applied_at timestamptz default now())');
   const applied = new Set((await pool.query('select name from _migrations')).rows.map((r) => r.name));
   const files = readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
@@ -27,7 +28,9 @@ async function run() {
     }
   }
   console.log('migrations complete');
-  await pool.end();
 }
 
-run().catch((e) => { console.error(e); process.exit(1); });
+// CLI entrypoint: run migrations then close the pool.
+if (process.argv[1] && (process.argv[1].endsWith('migrate.ts') || process.argv[1].endsWith('migrate.js'))) {
+  runMigrations().then(() => pool.end()).catch((e) => { console.error(e); process.exit(1); });
+}
