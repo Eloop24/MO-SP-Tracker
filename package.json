@@ -16,7 +16,7 @@
     "migrate:prod": "node dist/src/migrate.js",
     "seed:prod": "node dist/src/seed.js",
     "dev": "tsx watch src/server.ts",
-    "start": "node dist/src/migrate.js && node dist/src/server.js",
+    "start": "node dist/src/migrate.js && node dist/src/seed-if-empty.js && node dist/src/server.js",
     "test": "vitest run",
     "postinstall": "npm run build:client"
   },

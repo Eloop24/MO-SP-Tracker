@@ -43,19 +43,15 @@ To reference the database URL, set `DATABASE_URL` to `${{Postgres.DATABASE_URL}}
 service variables (Railway's reference syntax), or just add the Postgres plugin to the same
 service which provides it automatically.
 
-## 4. Seed the database (once)
+## 4. Seeding (automatic)
 
-Migrations run automatically on every start. The **initial data load runs once, manually**, so
-deploys never wipe live data. After the first successful deploy, open the app service's shell
-(Railway → service → **⋯** → **Shell**, or use `railway run`) and run:
+Nothing to do. On startup the app runs migrations, then **seeds the database only if it's empty**
+(`node dist/src/seed-if-empty.js`). So the very first deploy auto-loads `seed/initial-data.json`
+(9 properties, 94 projects, the GL, cash snapshots), and every later deploy detects existing data
+and skips seeding — your live data is never wiped by a deploy.
 
-```bash
-npm run seed:prod
-```
-
-This loads `seed/initial-data.json` (9 properties, 94 projects, the GL, and cash snapshots).
-You can also skip this and instead use **Upload & Data → Import backup** in the UI to load a
-JSON backup exported from the original app.
+If you ever want to re-seed deliberately, use **Upload & Data → Reset to starter data** in the UI,
+or **Import backup** to load a JSON backup.
 
 ## 5. (Optional) Persistent volume for bid PDFs
 
