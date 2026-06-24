@@ -53,7 +53,7 @@ let VIEW={tab:'dashboard',prop:null};
 let FILT={region:'',props:null,cats:null,statuses:null,q:'',view:'board',catOpen:false,dateFrom:'',dateTo:''};
 let PFILT={hide:{},dateFrom:'',dateTo:''};   // property view: which phase groups are hidden + date range (per session)
 let DASH={region:'',props:[],cat:'',hidePlanned:false,discSort:'cost',discProp:''};  // dashboard controls
-let CFILT={prop:''};  // contracts view filter
+let CFILT={prop:'',q:'',sort:'date_desc'};  // contracts view filters + sort
 const PCOLOR={
   /* Minot — shades of blue */
   CLND:'#5e97cc', SPND:'#3f7cb8', TPND:'#2f6199', TCND:'#234e7d', WYND:'#183a5e',
@@ -296,13 +296,25 @@ function viewContracts(){
   const usd=n=>(n==null||n==='')?'—':'$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
   let list=(S.contracts||[]).slice();
   if(CFILT.prop) list=list.filter(c=>c.property===CFILT.prop);
-  list.sort((a,b)=>String(a.effectiveDate||'').localeCompare(String(b.effectiveDate||''))||String(a.outputFilename||'').localeCompare(String(b.outputFilename||'')));
+  if(CFILT.q){ const q=CFILT.q.toLowerCase(); list=list.filter(c=>[c.outputFilename,c.contractor,c.ownerEntity,c.scope].some(x=>String(x||'').toLowerCase().includes(q))); }
+  const sorters={
+    date_desc:(a,b)=>String(b.effectiveDate||'').localeCompare(String(a.effectiveDate||''))||String(b.outputFilename||'').localeCompare(String(a.outputFilename||'')),
+    date_asc:(a,b)=>String(a.effectiveDate||'').localeCompare(String(b.effectiveDate||''))||String(a.outputFilename||'').localeCompare(String(b.outputFilename||'')),
+    total_desc:(a,b)=>(Number(b.total)||0)-(Number(a.total)||0),
+    contractor:(a,b)=>String(a.contractor||'').localeCompare(String(b.contractor||'')),
+    property:(a,b)=>String(a.property).localeCompare(String(b.property))||String(b.effectiveDate||'').localeCompare(String(a.effectiveDate||'')),
+  };
+  list.sort(sorters[CFILT.sort]||sorters.date_desc);
   const total=list.reduce((a,c)=>a+(Number(c.total)||0),0);
 
+  const searchInp=el('input',{type:'search',placeholder:'Search contractor, scope, file…',value:CFILT.q||'',style:'min-width:200px',onchange:e=>{CFILT.q=e.target.value;render();}});
   const propSel=el('select',{onchange:e=>{CFILT.prop=e.target.value;render();}},
     el('option',{value:''},'All properties'),
     ...S.properties.map(p=>el('option',{value:p.code,...(CFILT.prop===p.code?{selected:true}:{})},`${p.code} — ${p.name}`)));
-  const bar=topbar('Pipeline','Contracts', propSel);
+  const sortSel=el('select',{onchange:e=>{CFILT.sort=e.target.value;render();}},
+    ...[['date_desc','Newest first'],['date_asc','Oldest first'],['total_desc','Total (high→low)'],['contractor','Contractor (A–Z)'],['property','Property']]
+      .map(([v,l])=>el('option',{value:v,...(CFILT.sort===v?{selected:true}:{})},l)));
+  const bar=topbar('Pipeline','Contracts', searchInp, propSel, sortSel);
 
   const body=el('div',{class:'grid'});
 

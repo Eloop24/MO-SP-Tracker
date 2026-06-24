@@ -9,7 +9,9 @@
       "Bash(mkdir -p seed)",
       "Bash(cp \"C:\\\\Users\\\\TroySteiss\\\\Downloads\\\\nd-sp-tracker-2026-06-22.json\" seed/initial-data.json)",
       "Bash(node -e \"const d=require\\('./seed/initial-data.json'\\); console.log\\('properties',d.properties.length\\); console.log\\('projects',d.projects.length\\); console.log\\('gl',d.gl.length\\); console.log\\('cashAdjustments',d.cashAdjustments.length\\); console.log\\('cash keys',Object.keys\\(d.cash\\)\\); const wb=d.projects.filter\\(p=>p.bids&&p.bids.length\\); console.log\\('projects with bids',wb.length\\); if\\(wb[0]\\)console.log\\('sample bid',JSON.stringify\\(wb[0].bids[0]\\)\\); const ih=d.projects.filter\\(p=>p.inHouse\\); console.log\\('inHouse',ih.length\\); const pn=d.projects.filter\\(p=>p.progressNotes&&p.progressNotes.length\\); console.log\\('with progressNotes',pn.length\\);\")",
-      "mcp__Claude_Preview__preview_start"
+      "mcp__Claude_Preview__preview_start",
+      "PowerShell(winget search poppler 2>&1)",
+      "PowerShell(winget install --id oschwartz10612.Poppler -e --accept-source-agreements --accept-package-agreements --silent 2>&1)"
     ]
   }
 }
