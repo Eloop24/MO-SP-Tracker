@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build:client": "node build-client.mjs",
-    "build:server": "esbuild src/auth.ts src/contract.ts src/db.ts src/importers.ts src/migrate.ts src/routes.ts src/seed.ts src/seed-if-empty.ts src/server.ts shared/domain.ts --platform=node --format=esm --outdir=dist --outbase=. --sourcemap",
+    "build:server": "esbuild src/auth.ts src/contract.ts src/db.ts src/importers.ts src/migrate.ts src/routes.ts src/seed.ts src/seed-if-empty.ts src/server.ts shared/domain.ts portfolios/mo.ts portfolios/nd.ts --platform=node --format=esm --outdir=dist --outbase=. --sourcemap",
     "build": "npm run build:client && npm run build:server",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "migrate": "tsx src/migrate.ts",
