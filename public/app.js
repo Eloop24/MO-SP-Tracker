@@ -240,7 +240,7 @@ function rail(){
   const r=el('div',{class:'rail'+(VIEW.railOpen?' open':'')});
   const brand=el('div',{class:'brand'},
     el('div',{class:'mark'}, el('div',{class:'glyph'},'SP'),
-      el('div',{}, el('h1',{},'North Dakota'), el('div',{class:'sub'},'Special Projects · Capex'))));
+      el('div',{}, el('h1',{},(window.__PORTFOLIO_TITLE__||'SP')), el('div',{class:'sub'},'Special Projects · Capex'))));
   const nav=el('div',{class:'nav'});
   const item=(tab,ic,label,ct)=>{
     const b=el('button',{class:VIEW.tab===tab?'on':'',onclick:()=>{VIEW.tab=tab;VIEW.railOpen=false;render();}},
@@ -254,7 +254,7 @@ function rail(){
   nav.append(item('inhouse','🛠','In-house',S.projects.filter(isInHouse).length||null));
   nav.append(item('contracts','▦','Contracts',(S.contracts||[]).length||null));
   nav.append(el('div',{class:'grp'},'Properties'));
-  ['Minot','Williston'].forEach(reg=>{
+  [...new Set(S.properties.map(p=>p.region))].forEach(reg=>{
     nav.append(el('div',{class:'grp',style:'padding-top:6px'},reg));
     S.properties.filter(p=>p.region===reg).forEach(p=>{
       const b=el('button',{class:(VIEW.tab==='property'&&VIEW.prop===p.code)?'on':'',onclick:()=>{VIEW.tab='property';VIEW.prop=p.code;VIEW.railOpen=false;render();}},
@@ -377,7 +377,7 @@ function viewContracts(){
    DASHBOARD
 ========================================================= */
 function viewDashboard(){
-  const regions=['Minot','Williston'];
+  const regions=[...new Set(S.properties.map(p=>p.region))];
   DASH.props=DASH.props||[];
   let props=S.properties.filter(p=>!DASH.region||p.region===DASH.region);
   if(DASH.props.length) props=props.filter(p=>DASH.props.includes(p.code));
@@ -424,7 +424,7 @@ function viewDashboard(){
   const kpis=el('div',{class:'grid kpis'});
   const kpi=(lab,val,sub,cls)=>el('div',{class:'kpi'+(cls?' '+cls:'')}, el('div',{class:'lab'},lab), el('div',{class:'val'+(typeof val==='string'&&val[0]==='('?' neg':'')},val), el('div',{class:'sub'},sub));
   kpis.append(
-    kpi('Properties',String(props.length),DASH.region||'Minot · Williston'),
+    kpi('Properties',String(props.length),DASH.region||regions.join(' · ')),
     kpi('Active projects',String(active.length),`${all.length} tracked${notesCount?` · ${notesCount} note${notesCount!==1?'s':''}`:''}`),
     kpi('SP budget (2026)',fmt(totBudget),DASH.region?DASH.region:'across portfolio','accent'),
     kpi('Spent to date',fmt(totSpent),'posted per ledger'),
@@ -1465,7 +1465,7 @@ function viewCash(){
     th('Outstanding','r'),th('Projected cash','r'),
     th('SP remaining','r'),th('Loan amount','r'),th('Rate','r'),th('LTV','r'),th('Matures','r'),th('DCR','r'))));
   const tb=el('tbody');
-  ['Minot','Williston'].forEach(reg=>{
+  [...new Set(S.properties.map(p=>p.region))].forEach(reg=>{
     tb.append(el('tr',{class:'grp'}, el('td',{colspan:12},reg)));
     S.properties.filter(p=>p.region===reg).forEach(p=>{
       const c=S.cash[p.code]||{}; const adj=cashAdjFor(p.code); const cmm=cashModel(p.code);
