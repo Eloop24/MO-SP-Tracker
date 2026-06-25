@@ -145,6 +145,7 @@ api.post('/projects/:id/contract', async (req, res) => {
     effectiveDate: b.effectiveDate || '', termEndDate: b.termEndDate || '', ownerEntity: b.ownerEntity || '',
     contractorName: b.contractorName || '', propertyName: b.propertyName || '', propertyAddr: b.propertyAddr || '',
     ownerNoticeAddr: b.ownerNoticeAddr || b.propertyAddr || '', contractorAddr: b.contractorAddr || '', contractTotal: b.contractTotal || '',
+    dailyReduction: b.dailyReduction || '', workDays: b.workDays || '', workHours: b.workHours || '',
   };
   if (!vars.ownerEntity || !vars.contractorName || !vars.contractTotal) return res.status(400).json({ error: 'ownerEntity, contractorName and contractTotal are required' });
 

@@ -1061,7 +1061,8 @@ function openProject(id,preset){
       ownerEntity:prop.ownerEntity||'', contractorName:(approved.contractor||p.contractor||''),
       propertyName:prop.name||'', propertyAddr:prop.address||'',
       ownerNoticeAddr:prop.ownerNoticeAddr||prop.address||'', contractorAddr:'',
-      contractTotal:usd(total), unit:'', scope:p.name||''
+      contractTotal:usd(total), unit:'', scope:p.name||'',
+      dailyReduction:'', workDays:'', workHours:''
     };
     const scrim=el('div',{class:'scrim modal-center',onclick:e=>{if(e.target===scrim)scrim.remove();}});
     const sheet=el('div',{class:'sheet'});
@@ -1082,6 +1083,8 @@ function openProject(id,preset){
     bb.append(el('div',{class:'frow'}, f('Effective date (MM/DD/YYYY)','effectiveDate'), f('Term end date (MM/DD/YYYY)','termEndDate')));
     bb.append(el('div',{class:'frow'}, f('Contract total','contractTotal'), f('Unit # (optional)','unit',{ph:'e.g. 201'})));
     bb.append(f('Scope of work','scope',{ph:'e.g. HVAC replacement — Unit 316'}));
+    bb.append(el('div',{class:'frow'}, f('Daily reduction amount','dailyReduction',{ph:'e.g. $500'}), f('Work days','workDays',{ph:'e.g. Mon - Fri'})));
+    bb.append(f('Work hours','workHours',{ph:'e.g. 8:00 AM - 5:00 PM'}));
     // --- Contractor ---
     sect('Contractor');
     bb.append(f('Contractor name','contractorName'));
