@@ -1091,7 +1091,7 @@ function openProject(id,preset){
       if(!data.ownerEntity||!data.contractorName||!data.contractTotal){ err.textContent='Owner entity, contractor name and contract total are required.'; return; }
       genBtn.disabled=true; genBtn.textContent='Generating…'; err.textContent='';
       try{
-        await saveProjectSilent(p);
+        try{ await saveProjectSilent(p); }catch(se){ console.warn('pre-save before contract failed:',se.message); }
         const r=await fetch('/api/projects/'+p.id+'/contract',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
         if(!r.ok){ const e=await r.json().catch(()=>({})); err.textContent=e.error||'Generation failed.'; genBtn.disabled=false; genBtn.textContent='Generate contract'; return; }
         const out=await r.json();
