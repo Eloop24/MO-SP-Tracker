@@ -160,13 +160,14 @@ export const CATEGORIES = ['APPLIANCES', 'BUILDING REPAIRS', 'CABINETS/COUNTERTO
    (e.g. PORTFOLIO=mo or PORTFOLIO=nd). Defaults to 'mo'.
    To add a new portfolio, create portfolios/<name>.ts with the same exports. */
 
-import { PROPERTIES as MO_PROPS, PCOLOR as MO_COLORS, PORTFOLIO_TITLE as MO_TITLE } from '../portfolios/mo.js';
-import { PROPERTIES as ND_PROPS, PCOLOR as ND_COLORS, PORTFOLIO_TITLE as ND_TITLE } from '../portfolios/nd.js';
+import { PROPERTIES as MO_PROPS, PCOLOR as MO_COLORS, PORTFOLIO_TITLE as MO_TITLE, CONTRACT_CONFIG as MO_CONTRACT } from '../portfolios/mo.js';
+import { PROPERTIES as ND_PROPS, PCOLOR as ND_COLORS, PORTFOLIO_TITLE as ND_TITLE, CONTRACT_CONFIG as ND_CONTRACT } from '../portfolios/nd.js';
 
 const _p = (typeof process !== 'undefined' ? process.env?.PORTFOLIO : undefined) || 'mo';
 export const PROPERTIES: Property[] = _p === 'nd' ? ND_PROPS : MO_PROPS;
 export const PCOLOR: Record<string, string> = _p === 'nd' ? ND_COLORS : MO_COLORS;
 export const PORTFOLIO_TITLE: string = _p === 'nd' ? ND_TITLE : MO_TITLE;
+export const CONTRACT_CONFIG = _p === 'nd' ? ND_CONTRACT : MO_CONTRACT;
 export const pcolor = (code: string): string => PCOLOR[code] || '#7a8190';
 
 /* Map a property code to its region/manager (derived on save, spec §2). */

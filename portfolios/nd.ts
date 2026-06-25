@@ -20,3 +20,10 @@ export const PCOLOR: Record<string, string> = {
   /* Williston — oranges */
   BCND: '#e0973a', ECND: '#d2731f', FHND: '#b8501f', PHND: '#8f3818',
 };
+
+export const CONTRACT_CONFIG = {
+  section3Term: 'This Agreement shall remain in effect until {TERM_END_DATE} unless sooner terminated in accordance with this Agreement.',
+  section7GuaranteePrefix: 'for a period of',
+  ownerName: '',
+  ownerTitle: '',
+};
