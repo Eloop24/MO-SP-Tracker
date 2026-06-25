@@ -154,34 +154,19 @@ export const OVER_THRESHOLD = 5000;                        // $5K threshold (3 u
 
 export const CATEGORIES = ['APPLIANCES', 'BUILDING REPAIRS', 'CABINETS/COUNTERTOPS', 'CARPETS/VINYL', 'COMMON AREA UPGRADES', 'Concrete/Asphalt', 'DOORS/WINDOWS', 'DRAPES/BLINDS', 'ELECTRICAL - EXTERIOR', 'ELECTRICAL - INTERIOR', 'ELEVATORS', 'FENCING', 'FIRE', 'FURNITURE/EQUIPMENT', 'GENERAL', 'HVAC', 'INSPECTION EXPENSES', 'JANITORIAL', 'LABOR', 'LANDSCAPING', 'OTHER', 'PAINTING - EXTERIOR', 'PAINTING - INTERIOR', 'PARKING', 'PLUMBING', 'POOL', 'REPAIR DOWN UNITS', 'ROOFING', 'SECURITY CAMERA', 'SIGNAGE', 'SUPPLIES', 'UNIT AMENITIES/UPGRADES', 'WOOD REPLACEMENT'];
 
-/* ---------- Portfolio reference data (spec §2) ---------- */
-export const PROPERTIES: Property[] = [
-  { code: 'CCMO', name: 'Canyon Creek',                  region: 'Mocky Saymiknha', manager: 'Carolyn Kehoe',      address: '4851 Lemay Ferry Rd; Mehlville, MO 63129' },
-  { code: 'FWMO', name: 'Forest Woods',                  region: 'Mocky Saymiknha', manager: 'Vaneisha Holmes',     address: '101 Forest Parkway; Valley Park, MO 63088' },
-  { code: 'PCMO', name: 'Park Commons',                  region: 'Mocky Saymiknha', manager: 'Vaneisha Holmes',     address: '600 Park Commons Ct; Valley Park, MO 63088' },
-  { code: 'TDMO', name: 'The District',                  region: 'Mocky Saymiknha', manager: 'Colby Higgins',       address: '633 N McKnight Road; St Louis, MO 63132' },
-  { code: 'GMMO', name: 'Greenmar',                      region: 'Brenda Conway',   manager: 'Chrystal Escobar',    address: '1054 Green Mountain Court; Fenton, MO 63026' },
-  { code: 'HRMO', name: 'Hunters Ridge',                 region: 'Brenda Conway',   manager: 'Kristen Mooney',      address: '5625 Hunters Valley Court; St. Louis, MO 63129' },
-  { code: 'SOMO', name: 'Southpointe',                   region: 'Brenda Conway',   manager: 'Amanda Pickering',    address: '9950 Pointe South Dr.; Sappington, MO 63128' },
-  { code: 'SPMO', name: 'Suson Pines',                   region: 'Brenda Conway',   manager: 'Cindy Sykes',         address: '5265 Suson Hills Dr; St. Louis, MO 63128' },
-  { code: 'STMO', name: 'The Retreat at Seven Trails',   region: 'Brenda Conway',   manager: 'Brittney Stokes',     address: '500 Seven Trails Drive; Ballwin, MO 63011' },
-  { code: 'VLMO', name: 'Vicino on the Lake',            region: 'Brenda Conway',   manager: 'Christy Smith',       address: '1003 Mariners Point Dr.; Creve Coeur, MO 63141' },
-  { code: 'WVMO', name: 'Westchester Village',           region: 'Brenda Conway',   manager: 'Manivanh Savilay',    address: "941 Clubhouse Lane; O'Fallon, MO 63366" },
-  { code: 'GGMO', name: 'The Villages at General Grant', region: 'Joseph Randoll',  manager: 'Cindy Schutz',        address: '7482 Hardscrapple Drive; Affton, MO 63123' },
-  { code: 'HEMO', name: 'Heritage Estates',              region: 'Joseph Randoll',  manager: 'Kirsten Green',       address: '9196 Heritage Drive; Affton, MO 63123' },
-  { code: 'SWMO', name: 'Southwoods',                    region: 'Joseph Randoll',  manager: 'Melody Whited',       address: '9287 Fort Sumter Lane; Sappington, MO 63126' },
-  { code: 'VRMO', name: 'Village Royale',                region: 'Joseph Randoll',  manager: 'Alen Palislamovic',   address: '5602 Duessel Lane; St. Louis, MO 63128' },
-];
+/* ---------- Portfolio reference data (spec §2) ----------
+   PROPERTIES, PCOLOR, and PORTFOLIO_TITLE are loaded from portfolios/<name>.ts
+   at build time. Set the PORTFOLIO environment variable to select a portfolio
+   (e.g. PORTFOLIO=mo or PORTFOLIO=nd). Defaults to 'mo'.
+   To add a new portfolio, create portfolios/<name>.ts with the same exports. */
 
-/* Per-property color — first-class concept; keyed off code, not region (spec §2). */
-export const PCOLOR: Record<string, string> = {
-  /* Mocky Saymiknha — blues */
-  CCMO: '#5e97cc', FWMO: '#3f7cb8', PCMO: '#2f6199', TDMO: '#1d4f82',
-  /* Brenda Conway — greens */
-  GMMO: '#4caf82', HRMO: '#3a9870', SOMO: '#2e7d5e', SPMO: '#246650', STMO: '#1a4f3e', VLMO: '#5bbf94', WVMO: '#107040',
-  /* Joseph Randoll — warm purples */
-  GGMO: '#9b6bbf', HEMO: '#7d4fa8', SWMO: '#61388f', VRMO: '#472a6e',
-};
+import { PROPERTIES as MO_PROPS, PCOLOR as MO_COLORS, PORTFOLIO_TITLE as MO_TITLE } from '../portfolios/mo.js';
+import { PROPERTIES as ND_PROPS, PCOLOR as ND_COLORS, PORTFOLIO_TITLE as ND_TITLE } from '../portfolios/nd.js';
+
+const _p = (typeof process !== 'undefined' ? process.env?.PORTFOLIO : undefined) || 'mo';
+export const PROPERTIES: Property[] = _p === 'nd' ? ND_PROPS : MO_PROPS;
+export const PCOLOR: Record<string, string> = _p === 'nd' ? ND_COLORS : MO_COLORS;
+export const PORTFOLIO_TITLE: string = _p === 'nd' ? ND_TITLE : MO_TITLE;
 export const pcolor = (code: string): string => PCOLOR[code] || '#7a8190';
 
 /* Map a property code to its region/manager (derived on save, spec §2). */

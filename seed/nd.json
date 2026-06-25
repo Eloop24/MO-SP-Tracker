@@ -1,0 +1,127 @@
+{
+  "meta": {
+    "version": 1,
+    "glPeriod": "",
+    "cashAsOf": "",
+    "seeded": true,
+    "lastSaved": "",
+    "noteMigration": 1,
+    "noContractMigration": 1,
+    "spCompletePurge": 1
+  },
+  "properties": [
+    {
+      "code": "CLND",
+      "name": "The Commons & Landing",
+      "region": "Minot",
+      "manager": "Holly Haman",
+      "spBudget": 0,
+      "units": 0,
+      "ownerEntity": "",
+      "contractCode": "CLND",
+      "address": "",
+      "ownerNoticeAddr": ""
+    },
+    {
+      "code": "SPND",
+      "name": "South Pointe",
+      "region": "Minot",
+      "manager": "Holly Haman",
+      "spBudget": 0,
+      "units": 0,
+      "ownerEntity": "",
+      "contractCode": "SPND",
+      "address": "",
+      "ownerNoticeAddr": ""
+    },
+    {
+      "code": "TPND",
+      "name": "The Plaza",
+      "region": "Minot",
+      "manager": "Holly Haman",
+      "spBudget": 0,
+      "units": 0,
+      "ownerEntity": "",
+      "contractCode": "TPND",
+      "address": "",
+      "ownerNoticeAddr": ""
+    },
+    {
+      "code": "TCND",
+      "name": "The Chateau",
+      "region": "Minot",
+      "manager": "Holly Haman",
+      "spBudget": 0,
+      "units": 0,
+      "ownerEntity": "",
+      "contractCode": "TCND",
+      "address": "",
+      "ownerNoticeAddr": ""
+    },
+    {
+      "code": "WYND",
+      "name": "The Wyatt at Northern Lights",
+      "region": "Minot",
+      "manager": "Holly Haman",
+      "spBudget": 0,
+      "units": 0,
+      "ownerEntity": "",
+      "contractCode": "WYND",
+      "address": "",
+      "ownerNoticeAddr": ""
+    },
+    {
+      "code": "BCND",
+      "name": "The Reserve at Bison Crossing",
+      "region": "Williston",
+      "manager": "Brittanee Purdue",
+      "spBudget": 0,
+      "units": 0,
+      "ownerEntity": "",
+      "contractCode": "BCND",
+      "address": "",
+      "ownerNoticeAddr": ""
+    },
+    {
+      "code": "ECND",
+      "name": "The Reserve at Elk Crossing",
+      "region": "Williston",
+      "manager": "Brittanee Purdue",
+      "spBudget": 0,
+      "units": 0,
+      "ownerEntity": "",
+      "contractCode": "ECND",
+      "address": "",
+      "ownerNoticeAddr": ""
+    },
+    {
+      "code": "FHND",
+      "name": "Fair Hills Apartments",
+      "region": "Williston",
+      "manager": "Brittanee Purdue",
+      "spBudget": 0,
+      "units": 0,
+      "ownerEntity": "",
+      "contractCode": "FHND",
+      "address": "",
+      "ownerNoticeAddr": ""
+    },
+    {
+      "code": "PHND",
+      "name": "Plantation at Hunters Run",
+      "region": "Williston",
+      "manager": "Brittanee Purdue",
+      "spBudget": 0,
+      "units": 0,
+      "ownerEntity": "",
+      "contractCode": "PHND",
+      "address": "",
+      "ownerNoticeAddr": ""
+    }
+  ],
+  "cash": {},
+  "cashAdjustments": [],
+  "gl": [],
+  "projects": [],
+  "contracts": []
+}

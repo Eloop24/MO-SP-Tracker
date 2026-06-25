@@ -1,14 +1,14 @@
 {
-  "name": "nd-sp-tracker",
+  "name": "sp-tracker",
   "version": "1.0.0",
   "private": true,
-  "description": "North Dakota Special-Projects / Capex Tracker — hosted multi-user version",
+  "description": "Special-Projects / Capex Tracker \u2014 multi-portfolio hosted version",
   "type": "module",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "build:client": "esbuild shared/domain.ts --bundle --format=esm --outfile=public/domain.js",
+    "build:client": "node build-client.mjs",
     "build:server": "esbuild src/auth.ts src/contract.ts src/db.ts src/importers.ts src/migrate.ts src/routes.ts src/seed.ts src/seed-if-empty.ts src/server.ts shared/domain.ts --platform=node --format=esm --outdir=dist --outbase=. --sourcemap",
     "build": "npm run build:client && npm run build:server",
     "typecheck": "tsc -p tsconfig.json --noEmit",

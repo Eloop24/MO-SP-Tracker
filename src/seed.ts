@@ -4,7 +4,8 @@ import type pg from 'pg';
 import { pool } from './db.js';
 import { PROPERTIES, pcolor, type AppState } from '../shared/domain.js';
 
-export const SEED_PATH = join(process.cwd(), 'seed', 'initial-data.json');
+const _portfolio = process.env.PORTFOLIO || 'mo';
+export const SEED_PATH = join(process.cwd(), 'seed', `${_portfolio}.json`);
 
 const dnull = (v: any): string | null => {
   if (v == null || v === '') return null;

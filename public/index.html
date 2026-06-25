@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Missouri — Special Projects Tracker</title>
+<title>SP Tracker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
@@ -26,7 +26,7 @@
   <div id="login">
     <div class="card">
       <div class="glyph">SP</div>
-      <h1>Missouri SP Tracker</h1>
+      <h1 id="portfolio-title">SP Tracker</h1>
       <p>Special projects &amp; capital expenditures. Enter the team password to continue.</p>
       <form id="login-form" autocomplete="off">
         <input id="login-pw" type="password" placeholder="Team password" autocomplete="current-password" autofocus>
@@ -37,5 +37,11 @@
   </div>
   <div id="root"></div>
   <script src="/app.js" defer></script>
+  <script type="module">
+    import { PORTFOLIO_TITLE } from '/domain.js';
+    document.title = PORTFOLIO_TITLE + ' — Special Projects Tracker';
+    const h1 = document.getElementById('portfolio-title');
+    if (h1) h1.textContent = PORTFOLIO_TITLE + ' SP Tracker';
+  </script>
 </body>
 </html>
