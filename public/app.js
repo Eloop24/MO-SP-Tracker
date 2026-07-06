@@ -1090,37 +1090,47 @@ function openProject(id,preset){
     // --- Contractor (with vendor lookup autocomplete) ---
     sect('Contractor');
     (()=>{
-      // Contractor name field with vendor search dropdown
-      const wrap=el('div',{class:'field',style:'position:relative'});
+      // Drop rendered to body so it floats above the scrollable modal
+      const drop=el('div',{style:'display:none;position:fixed;z-index:10000;background:var(--surface);border:1px solid var(--line-2);border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.18);max-height:220px;overflow-y:auto;min-width:260px'});
+      document.body.append(drop);
+      // Remove drop when the modal is closed
+      const _obs=new MutationObserver(()=>{ if(!document.body.contains(scrim)){ drop.remove(); _obs.disconnect(); } });
+      _obs.observe(document.body,{childList:true});
+      function positionDrop(){ const r=inp.getBoundingClientRect(); drop.style.left=r.left+'px'; drop.style.top=(r.bottom+4)+'px'; drop.style.width=r.width+'px'; }
+      const wrap=el('div',{class:'field'});
       const lbl=el('label',{},'Contractor name');
-      const inp=el('input',{value:data.contractorName||'',placeholder:'Search vendor list or type manually',
+      const inp=el('input',{value:data.contractorName||'',placeholder:'Type to search 15k vendors, or enter manually',
         oninput:e=>{ data.contractorName=e.target.value; schedSearch(e.target.value); }
       });
-      const drop=el('div',{style:'display:none;position:absolute;z-index:999;left:0;right:0;top:100%;background:var(--surface);border:1px solid var(--line-2);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.18);max-height:240px;overflow-y:auto'});
-      let _st; function schedSearch(v){ clearTimeout(_st); if(v.length<2){drop.style.display='none';return;} _st=setTimeout(()=>runSearch(v),280); }
+      let _st;
+      function schedSearch(v){ clearTimeout(_st); if(v.length<2){drop.style.display='none';return;} _st=setTimeout(()=>runSearch(v),280); }
       async function runSearch(v){
         try{
           const r=await fetch('/api/vendors?q='+encodeURIComponent(v));
           const hits=await r.json();
           drop.innerHTML='';
-          if(!hits.length){drop.style.display='none';return;}
-          hits.forEach(h=>{
-            const row=el('div',{style:'padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--line-2)',
+          if(!hits.length){ drop.style.display='none'; return; }
+          hits.forEach((h,i)=>{
+            const row=el('div',{style:'padding:9px 14px;cursor:pointer;'+(i<hits.length-1?'border-bottom:1px solid var(--line-2);':''),
               onmousedown:e=>{ e.preventDefault(); data.contractorName=h.name; data.contractorAddr=h.addr; inp.value=h.name; addrInp.value=h.addr; drop.style.display='none'; },
-              onmouseover:e=>e.currentTarget.style.background='var(--hover)',
-              onmouseout:e=>e.currentTarget.style.background=''
+              onmouseover:e=>{ e.currentTarget.style.background='var(--line-2)'; },
+              onmouseout:e=>{ e.currentTarget.style.background=''; }
             });
-            row.append(el('div',{style:'font-weight:600'},h.name), el('div',{style:'color:var(--ink-3);font-size:11.5px'},h.addr));
+            row.append(
+              el('div',{style:'font-size:13px;font-weight:500;color:var(--ink-1)'},h.name),
+              el('div',{style:'font-size:11.5px;color:var(--ink-3);margin-top:1px'},h.addr)
+            );
             drop.append(row);
           });
-          drop.style.display='block';
+          positionDrop(); drop.style.display='block';
         }catch(e){ drop.style.display='none'; }
       }
-      inp.addEventListener('blur',()=>setTimeout(()=>{drop.style.display='none';},150));
-      wrap.append(lbl,inp,drop); bb.append(wrap);
-      // Contractor address field (auto-filled or manual)
+      inp.addEventListener('focus',()=>{ if(inp.value.length>=2) schedSearch(inp.value); });
+      inp.addEventListener('blur',()=>setTimeout(()=>{ drop.style.display='none'; },160));
+      wrap.append(lbl,inp); bb.append(wrap);
+      // Address field — auto-filled by selection, still editable
       const addrWrap=el('div',{class:'field'});
-      const addrInp=el('input',{value:data.contractorAddr||'',placeholder:'Street, City, ZIP — auto-filled when vendor is selected',
+      const addrInp=el('input',{value:data.contractorAddr||'',placeholder:'Auto-filled on selection, or enter manually',
         oninput:e=>data.contractorAddr=e.target.value});
       addrWrap.append(el('label',{},'Contractor address'),addrInp); bb.append(addrWrap);
     })();
