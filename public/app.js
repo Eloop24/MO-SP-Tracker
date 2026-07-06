@@ -1091,7 +1091,7 @@ function openProject(id,preset){
     sect('Contractor');
     (()=>{
       // Drop rendered to body so it floats above the scrollable modal
-      const drop=el('div',{style:'display:none;position:fixed;z-index:10000;background:var(--surface);border:1px solid var(--line-2);border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.18);max-height:220px;overflow-y:auto;min-width:260px'});
+      const drop=el('div',{style:'display:none;position:fixed;z-index:10000;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 12px 32px rgba(0,0,0,.22);max-height:220px;overflow-y:auto;min-width:260px'});
       document.body.append(drop);
       // Remove drop when the modal is closed
       const _obs=new MutationObserver(()=>{ if(!document.body.contains(scrim)){ drop.remove(); _obs.disconnect(); } });
