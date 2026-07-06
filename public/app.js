@@ -1087,10 +1087,43 @@ function openProject(id,preset){
     bb.append(f('Scope of work','scope',{ph:'e.g. HVAC replacement — Unit 316'}));
     bb.append(el('div',{class:'frow'}, f('Daily reduction amount','dailyReduction',{ph:'e.g. $500'}), f('Work days','workDays',{ph:'e.g. Mon - Fri'})));
     bb.append(f('Work hours','workHours',{ph:'e.g. 8:00 AM - 5:00 PM'}));
-    // --- Contractor ---
+    // --- Contractor (with vendor lookup autocomplete) ---
     sect('Contractor');
-    bb.append(f('Contractor name','contractorName'));
-    bb.append(f('Contractor address','contractorAddr'));
+    (()=>{
+      // Contractor name field with vendor search dropdown
+      const wrap=el('div',{class:'field',style:'position:relative'});
+      const lbl=el('label',{},'Contractor name');
+      const inp=el('input',{value:data.contractorName||'',placeholder:'Search vendor list or type manually',
+        oninput:e=>{ data.contractorName=e.target.value; schedSearch(e.target.value); }
+      });
+      const drop=el('div',{style:'display:none;position:absolute;z-index:999;left:0;right:0;top:100%;background:var(--surface);border:1px solid var(--line-2);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.18);max-height:240px;overflow-y:auto'});
+      let _st; function schedSearch(v){ clearTimeout(_st); if(v.length<2){drop.style.display='none';return;} _st=setTimeout(()=>runSearch(v),280); }
+      async function runSearch(v){
+        try{
+          const r=await fetch('/api/vendors?q='+encodeURIComponent(v));
+          const hits=await r.json();
+          drop.innerHTML='';
+          if(!hits.length){drop.style.display='none';return;}
+          hits.forEach(h=>{
+            const row=el('div',{style:'padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--line-2)',
+              onmousedown:e=>{ e.preventDefault(); data.contractorName=h.name; data.contractorAddr=h.addr; inp.value=h.name; addrInp.value=h.addr; drop.style.display='none'; },
+              onmouseover:e=>e.currentTarget.style.background='var(--hover)',
+              onmouseout:e=>e.currentTarget.style.background=''
+            });
+            row.append(el('div',{style:'font-weight:600'},h.name), el('div',{style:'color:var(--ink-3);font-size:11.5px'},h.addr));
+            drop.append(row);
+          });
+          drop.style.display='block';
+        }catch(e){ drop.style.display='none'; }
+      }
+      inp.addEventListener('blur',()=>setTimeout(()=>{drop.style.display='none';},150));
+      wrap.append(lbl,inp,drop); bb.append(wrap);
+      // Contractor address field (auto-filled or manual)
+      const addrWrap=el('div',{class:'field'});
+      const addrInp=el('input',{value:data.contractorAddr||'',placeholder:'Street, City, ZIP — auto-filled when vendor is selected',
+        oninput:e=>data.contractorAddr=e.target.value});
+      addrWrap.append(el('label',{},'Contractor address'),addrInp); bb.append(addrWrap);
+    })();
     const err=el('div',{style:'color:var(--rust);font-size:12px;min-height:16px'});
     const genBtn=el('button',{class:'btn accent',onclick:async()=>{
       if(!data.ownerEntity||!data.contractorName||!data.contractTotal){ err.textContent='Owner entity, contractor name and contract total are required.'; return; }

@@ -465,6 +465,30 @@ api.get('/export/projects.csv', async (_req, res) => {
   res.send(lines.join('\n'));
 });
 
+/* ---------- Vendor address lookup (from data/vendors.json) ---------- */
+let _vendors: Array<{name: string; addr: string}> | null = null;
+async function loadVendors(): Promise<Array<{name: string; addr: string}>> {
+  if (_vendors) return _vendors;
+  try {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    _vendors = JSON.parse(readFileSync(join(process.cwd(), 'data/vendors.json'), 'utf8'));
+  } catch { _vendors = []; }
+  return _vendors!;
+}
+
+api.get('/vendors', async (req, res) => {
+  const q = String(req.query.q || '').trim().toLowerCase();
+  if (q.length < 2) return res.json([]);
+  const vendors = await loadVendors();
+  const results: Array<{name: string; addr: string}> = [];
+  for (const v of vendors) {
+    if (v.name.toLowerCase().includes(q)) results.push(v);
+    if (results.length >= 10) break;
+  }
+  res.json(results);
+});
+
 /* ---------- reset to seed / restore from backup ---------- */
 api.post('/reset', async (_req, res) => {
   const { readFileSync } = await import('node:fs');
