@@ -1126,28 +1126,32 @@ function openProject(id,preset){
     },'📄 Drop fully-executed PDF here, or click to browse');
     const csInput=el('input',{type:'file',accept:'application/pdf',style:'display:none',onchange:async e=>{if(e.target.files[0])await uploadExecuted(e.target.files[0]);}});
     const csResult=el('div',{style:'margin-top:10px'});
-    if(p.contractFileKey&&p.steps&&p.steps.signed){
+    function showCsFile(fileKey,fileName){
+      csResult.innerHTML='';
+      if(!fileKey) return;
+      const removeBtn=el('button',{class:'btn ghost sm',style:'color:var(--rust)',title:'Remove countersigned contract',onclick:async()=>{
+        try{ await API.send('DELETE','/projects/'+p.id+'/contract-file');
+          p.steps={...p.steps,signed:false}; p.contractFileKey=null; p.contractFileName=null;
+          csResult.innerHTML=''; csMeta.textContent='Awaiting countersigned copy'; drawSteps(); toast('Countersigned contract removed');
+        }catch(e){ toast('Remove failed: '+e.message); }
+      }},'✕ Remove');
       csResult.append(el('div',{style:'display:flex;align-items:center;gap:8px;padding:8px 0'},
-        el('a',{href:'/api/files/'+p.contractFileKey+'?name='+encodeURIComponent(p.contractFileName||'contract.pdf'),class:'btn ghost sm'},'⬇ '+(p.contractFileName||'contract.pdf')),
-        el('span',{style:'color:var(--ink-3);font-size:12px'},'Signed & countersigned ✓')
+        el('a',{href:'/api/files/'+fileKey+'?name='+encodeURIComponent(fileName||'contract.pdf'),class:'btn ghost sm'},'⬇ '+(fileName||'contract.pdf')),
+        removeBtn
       ));
     }
     async function uploadExecuted(file){
       csDropzone.textContent='Uploading…'; csDropzone.style.opacity='.6';
       try{
-        try{ await saveProjectSilent(p); }catch(se){ console.warn('pre-save failed:',se.message); }
         const fd=new FormData(); fd.append('file',file);
         const r=await fetch('/api/projects/'+p.id+'/contract/upload',{method:'POST',body:fd});
         if(!r.ok){ const e=await r.json().catch(()=>({})); csDropzone.textContent='Upload failed: '+(e.error||r.status); csDropzone.style.opacity='1'; return; }
         const out=await r.json();
         csDropzone.textContent='📄 Drop fully-executed PDF here, or click to browse'; csDropzone.style.opacity='1';
-        csResult.innerHTML='';
-        csResult.append(el('div',{style:'display:flex;align-items:center;gap:8px;padding:8px 0'},
-          el('a',{href:out.downloadUrl,class:'btn ghost sm'},'⬇ '+out.fileName),
-          el('span',{style:'color:var(--ink-3);font-size:12px'},'Lifecycle updated ✓')
-        ));
-        csMeta.textContent='Uploaded ✓'; csWrap.open=true;
-        await afterWrite('Executed contract uploaded');
+        p.steps={...p.steps,signed:true}; p.contractFileKey=out.fileKey; p.contractFileName=out.fileName;
+        showCsFile(out.fileKey,out.fileName);
+        csMeta.textContent='Signed ✓'; csWrap.open=true;
+        drawSteps(); toast('Executed contract uploaded ✓');
       }catch(e){ csDropzone.textContent='Upload failed: '+e.message; csDropzone.style.opacity='1'; }
     }
     function refreshCsMeta(){
@@ -1155,6 +1159,7 @@ function openProject(id,preset){
       else{ csMeta.textContent='Awaiting countersigned copy'; }
     }
     refreshCsMeta();
+    if(p.contractFileKey&&p.steps&&p.steps.signed) showCsFile(p.contractFileKey,p.contractFileName);
     csBody.append(csDropzone,csInput,csResult);
     csWrap.append(csSum,csBody); b.append(csWrap);
   }
@@ -1174,10 +1179,18 @@ function openProject(id,preset){
     },'📋 Drop signed lien waiver here, or click to browse');
     const lwInput=el('input',{type:'file',accept:'application/pdf',style:'display:none',onchange:async e=>{if(e.target.files[0])await uploadLien(e.target.files[0]);}});
     const lwResult=el('div',{style:'margin-top:10px'});
-    if(p.lienFileKey){
+    function showLwFile(fileKey,fileName){
+      lwResult.innerHTML='';
+      if(!fileKey) return;
+      const removeBtn=el('button',{class:'btn ghost sm',style:'color:var(--rust)',title:'Remove lien waiver',onclick:async()=>{
+        try{ await API.send('DELETE','/projects/'+p.id+'/lien-file');
+          p.steps={...p.steps,lienWaiver:false}; p.lienFileKey=null; p.lienFileName=null;
+          lwResult.innerHTML=''; lwMeta.textContent='Awaiting waiver'; drawSteps(); toast('Lien waiver removed');
+        }catch(e){ toast('Remove failed: '+e.message); }
+      }},'✕ Remove');
       lwResult.append(el('div',{style:'display:flex;align-items:center;gap:8px;padding:8px 0'},
-        el('a',{href:'/api/files/'+p.lienFileKey+'?name='+encodeURIComponent(p.lienFileName||'lien-waiver.pdf'),class:'btn ghost sm'},'⬇ '+(p.lienFileName||'lien-waiver.pdf')),
-        el('span',{style:'color:var(--ink-3);font-size:12px'},'Lien waiver on file ✓')
+        el('a',{href:'/api/files/'+fileKey+'?name='+encodeURIComponent(fileName||'lien-waiver.pdf'),class:'btn ghost sm'},'⬇ '+(fileName||'lien-waiver.pdf')),
+        removeBtn
       ));
     }
     async function uploadLien(file){
@@ -1188,17 +1201,15 @@ function openProject(id,preset){
         if(!r.ok){ const e=await r.json().catch(()=>({error:r.status})); lwDropzone.textContent='Upload failed: '+(e.error||r.status); lwDropzone.style.opacity='1'; return; }
         const out=await r.json();
         lwDropzone.textContent='📋 Drop signed lien waiver here, or click to browse'; lwDropzone.style.opacity='1';
-        lwResult.innerHTML='';
-        lwResult.append(el('div',{style:'display:flex;align-items:center;gap:8px;padding:8px 0'},
-          el('a',{href:out.downloadUrl,class:'btn ghost sm'},'⬇ '+out.fileName),
-          el('span',{style:'color:var(--ink-3);font-size:12px'},'Lifecycle updated ✓')
-        ));
+        p.steps={...p.steps,lienWaiver:true}; p.lienFileKey=out.fileKey; p.lienFileName=out.fileName;
+        showLwFile(out.fileKey,out.fileName);
         lwMeta.textContent='Received ✓'; lwWrap.open=true;
-        await afterWrite('Lien waiver uploaded');
+        drawSteps(); toast('Lien waiver uploaded ✓');
       }catch(e){ lwDropzone.textContent='Upload failed: '+e.message; lwDropzone.style.opacity='1'; }
     }
     if(p.steps&&p.steps.lienWaiver){ lwMeta.textContent='Received ✓'; lwWrap.open=true; }
     else{ lwMeta.textContent='Awaiting waiver'; }
+    if(p.lienFileKey) showLwFile(p.lienFileKey,p.lienFileName);
     lwBody.append(lwDropzone,lwInput,lwResult);
     lwWrap.append(lwSum,lwBody); b.append(lwWrap);
   }

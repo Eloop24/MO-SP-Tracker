@@ -301,6 +301,29 @@ api.post('/projects/:id/lien/upload', memUpload.single('file'), async (req, res)
   res.json({ fileKey, fileName, downloadUrl: `/api/files/${fileKey}?name=${encodeURIComponent(fileName)}` });
 });
 
+/* ---------- Clear uploaded contract / lien waiver files ---------- */
+api.delete('/projects/:id/contract-file', async (req, res) => {
+  const projRow = await query('select * from projects where id=$1', [req.params.id]);
+  if (!projRow.rowCount) return res.status(404).json({ error: 'not found' });
+  const proj = projRow.rows[0];
+  const steps = Object.assign({}, proj.steps || {});
+  steps['signed'] = false;
+  await query('update projects set contract_file_key=null, contract_file_name=null, steps=$1, updated_at=now() where id=$2',
+    [JSON.stringify(steps), req.params.id]);
+  res.json({ ok: true });
+});
+
+api.delete('/projects/:id/lien-file', async (req, res) => {
+  const projRow = await query('select * from projects where id=$1', [req.params.id]);
+  if (!projRow.rowCount) return res.status(404).json({ error: 'not found' });
+  const proj = projRow.rows[0];
+  const steps = Object.assign({}, proj.steps || {});
+  steps['lienWaiver'] = false;
+  await query('update projects set lien_file_key=null, lien_file_name=null, steps=$1, updated_at=now() where id=$2',
+    [JSON.stringify(steps), req.params.id]);
+  res.json({ ok: true });
+});
+
 /* ---------- cash snapshot (mid-month edit) ---------- */
 api.patch('/cash/:code', async (req, res) => {
   const code = req.params.code.toUpperCase();
