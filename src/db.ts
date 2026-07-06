@@ -78,6 +78,8 @@ export function rowToProject(r: any, bids: Bid[] = [], notes: ProgressNote[] = [
     noContractSet: !!r.no_contract_set,
     contractFileKey: r.contract_file_key ?? null,
     contractFileName: r.contract_file_name ?? null,
+    lienFileKey: r.lien_file_key ?? null,
+    lienFileName: r.lien_file_name ?? null,
     bids,
     progressNotes: notes,
   };

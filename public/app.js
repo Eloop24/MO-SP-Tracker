@@ -1117,7 +1117,7 @@ function openProject(id,preset){
     const csMeta=el('span',{class:'bs-meta'});
     const csSum=el('summary',{class:'ph as-summary'},el('span',{class:'chev'},'▸'),el('h3',{},'Countersigned Contract'),el('div',{class:'sp'}),csMeta);
     const csBody=el('div',{class:'sb'});
-    csBody.append(el('p',{class:'bs-hint',style:'margin-top:0'},'Drop the fully-executed PDF here. Auto-ticks "Signed & Countersigned" and "Contract Filed" in the lifecycle.'));
+    csBody.append(el('p',{class:'bs-hint',style:'margin-top:0'},'Drop the fully-executed PDF here. Auto-ticks "Signed & Countersigned" in the lifecycle.'));
     const csDropzone=el('div',{class:'drop-target',style:'border:2px dashed var(--line-2);border-radius:8px;padding:24px 16px;text-align:center;cursor:pointer;color:var(--ink-3);font-size:13px',
       ondragover:e=>{e.preventDefault();csDropzone.style.borderColor='var(--accent)';},
       ondragleave:()=>{csDropzone.style.borderColor='var(--line-2)';},
@@ -1126,6 +1126,12 @@ function openProject(id,preset){
     },'📄 Drop fully-executed PDF here, or click to browse');
     const csInput=el('input',{type:'file',accept:'application/pdf',style:'display:none',onchange:async e=>{if(e.target.files[0])await uploadExecuted(e.target.files[0]);}});
     const csResult=el('div',{style:'margin-top:10px'});
+    if(p.contractFileKey&&p.steps&&p.steps.signed){
+      csResult.append(el('div',{style:'display:flex;align-items:center;gap:8px;padding:8px 0'},
+        el('a',{href:'/api/files/'+p.contractFileKey+'?name='+encodeURIComponent(p.contractFileName||'contract.pdf'),class:'btn ghost sm'},'⬇ '+(p.contractFileName||'contract.pdf')),
+        el('span',{style:'color:var(--ink-3);font-size:12px'},'Signed & countersigned ✓')
+      ));
+    }
     async function uploadExecuted(file){
       csDropzone.textContent='Uploading…'; csDropzone.style.opacity='.6';
       try{
@@ -1151,6 +1157,50 @@ function openProject(id,preset){
     refreshCsMeta();
     csBody.append(csDropzone,csInput,csResult);
     csWrap.append(csSum,csBody); b.append(csWrap);
+  }
+
+  // --- lien waiver upload ---
+  if(!p.inHouse && !p.noContract){
+    const lwWrap=el('details',{class:'panel acc',style:'margin-top:16px',...(p.steps&&p.steps.lienWaiver?{open:''}:{})});
+    const lwMeta=el('span',{class:'bs-meta'});
+    const lwSum=el('summary',{class:'ph as-summary'},el('span',{class:'chev'},'▸'),el('h3',{},'Lien Waiver'),el('div',{class:'sp'}),lwMeta);
+    const lwBody=el('div',{class:'sb'});
+    lwBody.append(el('p',{class:'bs-hint',style:'margin-top:0'},'Drop the signed lien waiver here. Auto-ticks "Lien Waiver Received" only — no other lifecycle steps are affected (lien waivers often arrive before work is complete).'));
+    const lwDropzone=el('div',{class:'drop-target',style:'border:2px dashed var(--line-2);border-radius:8px;padding:24px 16px;text-align:center;cursor:pointer;color:var(--ink-3);font-size:13px',
+      ondragover:e=>{e.preventDefault();lwDropzone.style.borderColor='var(--accent)';},
+      ondragleave:()=>{lwDropzone.style.borderColor='var(--line-2)';},
+      ondrop:async e=>{e.preventDefault();lwDropzone.style.borderColor='var(--line-2)';const file=e.dataTransfer.files[0];if(file)await uploadLien(file);},
+      onclick:()=>lwInput.click()
+    },'📋 Drop signed lien waiver here, or click to browse');
+    const lwInput=el('input',{type:'file',accept:'application/pdf',style:'display:none',onchange:async e=>{if(e.target.files[0])await uploadLien(e.target.files[0]);}});
+    const lwResult=el('div',{style:'margin-top:10px'});
+    if(p.lienFileKey){
+      lwResult.append(el('div',{style:'display:flex;align-items:center;gap:8px;padding:8px 0'},
+        el('a',{href:'/api/files/'+p.lienFileKey+'?name='+encodeURIComponent(p.lienFileName||'lien-waiver.pdf'),class:'btn ghost sm'},'⬇ '+(p.lienFileName||'lien-waiver.pdf')),
+        el('span',{style:'color:var(--ink-3);font-size:12px'},'Lien waiver on file ✓')
+      ));
+    }
+    async function uploadLien(file){
+      lwDropzone.textContent='Uploading…'; lwDropzone.style.opacity='.6';
+      try{
+        const fd=new FormData(); fd.append('file',file);
+        const r=await fetch('/api/projects/'+p.id+'/lien/upload',{method:'POST',body:fd});
+        if(!r.ok){ const e=await r.json().catch(()=>({error:r.status})); lwDropzone.textContent='Upload failed: '+(e.error||r.status); lwDropzone.style.opacity='1'; return; }
+        const out=await r.json();
+        lwDropzone.textContent='📋 Drop signed lien waiver here, or click to browse'; lwDropzone.style.opacity='1';
+        lwResult.innerHTML='';
+        lwResult.append(el('div',{style:'display:flex;align-items:center;gap:8px;padding:8px 0'},
+          el('a',{href:out.downloadUrl,class:'btn ghost sm'},'⬇ '+out.fileName),
+          el('span',{style:'color:var(--ink-3);font-size:12px'},'Lifecycle updated ✓')
+        ));
+        lwMeta.textContent='Received ✓'; lwWrap.open=true;
+        await afterWrite('Lien waiver uploaded');
+      }catch(e){ lwDropzone.textContent='Upload failed: '+e.message; lwDropzone.style.opacity='1'; }
+    }
+    if(p.steps&&p.steps.lienWaiver){ lwMeta.textContent='Received ✓'; lwWrap.open=true; }
+    else{ lwMeta.textContent='Awaiting waiver'; }
+    lwBody.append(lwDropzone,lwInput,lwResult);
+    lwWrap.append(lwSum,lwBody); b.append(lwWrap);
   }
 
   // --- lifecycle steps ---

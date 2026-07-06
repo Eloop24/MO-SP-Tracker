@@ -273,6 +273,34 @@ api.post('/projects/:id/contract/upload', memUpload.single('file'), async (req, 
   res.json({ fileKey, fileName, downloadUrl: `/api/files/${fileKey}?name=${encodeURIComponent(fileName)}` });
 });
 
+/* ---------- Upload lien waiver ---------- */
+api.post('/projects/:id/lien/upload', memUpload.single('file'), async (req, res) => {
+  const projRow = await query('select * from projects where id=$1', [req.params.id]);
+  if (!projRow.rowCount) return res.status(404).json({ error: 'project not found' });
+  const proj = projRow.rows[0];
+  const f = req.file;
+  if (!f) return res.status(400).json({ error: 'no file' });
+
+  const propRow = (await query('select contract_code from properties where code=$1', [proj.property_code])).rows[0];
+  const code = propRow?.contract_code || proj.property_code;
+  const today = new Date().toISOString().slice(0, 10);
+  const contractor = proj.contractor || '';
+  const total = proj.anticipated_cost != null ? Number(proj.anticipated_cost) : null;
+  const fileName = monarchFileName(code, today, contractor, total, proj.name || '', 'Full Executed').replace('Full Executed CA.pdf', 'Lien Waiver.pdf');
+  const fileKey = await storeFile(fileName, f.mimetype || 'application/pdf', f.buffer);
+
+  // Tick ONLY lienWaiver — no cascade (lien waivers often arrive before work is complete)
+  const steps: Record<string, boolean> = Object.assign({}, proj.steps || {});
+  steps['lienWaiver'] = true;
+
+  await tx(async (c) => {
+    await c.query('update projects set lien_file_key=$1, lien_file_name=$2, steps=$3, updated_at=now() where id=$4',
+      [fileKey, fileName, JSON.stringify(steps), proj.id]);
+  });
+
+  res.json({ fileKey, fileName, downloadUrl: `/api/files/${fileKey}?name=${encodeURIComponent(fileName)}` });
+});
+
 /* ---------- cash snapshot (mid-month edit) ---------- */
 api.patch('/cash/:code', async (req, res) => {
   const code = req.params.code.toUpperCase();

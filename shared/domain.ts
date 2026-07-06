@@ -51,6 +51,8 @@ export interface Project {
   noContractSet?: boolean;
   contractFileKey?: string | null;
   contractFileName?: string | null;
+  lienFileKey?: string | null;
+  lienFileName?: string | null;
 }
 
 export interface Property {
