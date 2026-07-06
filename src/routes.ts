@@ -133,8 +133,19 @@ api.get('/files/:key', async (req, res) => {
 });
 
 /* ---------- Generate Independent Contractor Agreement (spec: Contract_Generation_Workflow) ---------- */
-const camel = (s: string) => String(s || '').replace(/[^a-zA-Z0-9 ]/g, '').split(/\s+/).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join('');
-const mmddyyyy = (d: string) => { const m = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); if (m) return `${m[2]}${m[3]}${m[1]}`; const s = String(d || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); return s ? `${s[1].padStart(2, '0')}${s[2].padStart(2, '0')}${s[3]}` : 'date'; };
+function monarchFileName(code: string, effectiveDate: string, contractorName: string, total: number | null, scope: string, status: 'Unexecuted' | 'Full Executed'): string {
+  const d = String(effectiveDate || '');
+  let year = new Date().getFullYear().toString();
+  let mmdd = '0101';
+  const iso = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const mdy = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (iso) { year = iso[1]; mmdd = iso[2] + iso[3]; }
+  else if (mdy) { year = mdy[3]; mmdd = mdy[1].padStart(2, '0') + mdy[2].padStart(2, '0'); }
+  const contractor = (String(contractorName || '').trim().split(/\s+/)[0] || 'Contractor');
+  const amtK = total != null ? String(Math.round(Number(total) / 1000)) : '0';
+  const scopeClean = String(scope || '').replace(/[\/\\:*?"<>|]/g, '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  return `${year} ${mmdd} ${code} ${contractor} ${amtK} ${scopeClean} ${status} CA.pdf`;
+}
 
 api.post('/projects/:id/contract', async (req, res) => {
   const projRow = await query('select * from projects where id=$1', [req.params.id]);
@@ -162,13 +173,12 @@ api.post('/projects/:id/contract', async (req, res) => {
   try { pdf = await buildContract(vars, attachments); }
   catch (e: any) { return res.status(500).json({ error: 'contract build failed: ' + (e?.message || e) }); }
 
-  // Filename: [CONTRACT_CODE]_[Unit?]_[ContractorCamel]_[MMDDYYYY]_Unexecuted.pdf
+  // Filename: YYYY MMDD PropertyCode ContractorFirst AmtK Scope Unexecuted CA.pdf
   const propRow = (await query('select contract_code from properties where code=$1', [proj.property_code])).rows[0];
   const code = (propRow?.contract_code || proj.property_code);
-  const unit = b.unit ? `Unit${String(b.unit).replace(/[^0-9A-Za-z]/g, '')}_` : '';
-  const fileName = `${code}_${unit}${camel(vars.contractorName)}_${mmddyyyy(vars.effectiveDate)}_Unexecuted.pdf`;
-  const fileKey = await storeFile(fileName, 'application/pdf', Buffer.from(pdf));
   const total = nnull(String(vars.contractTotal).replace(/[^0-9.\-]/g, ''));
+  const fileName = monarchFileName(code, vars.effectiveDate, vars.contractorName, total, b.scope || proj.name || '', 'Unexecuted');
+  const fileKey = await storeFile(fileName, 'application/pdf', Buffer.from(pdf));
 
   await tx(async (c) => {
     // attach the contract to the project
@@ -197,6 +207,70 @@ api.post('/projects/:id/contract', async (req, res) => {
   });
 
   res.json({ contractFileKey: fileKey, contractFileName: fileName, downloadUrl: `/api/files/${fileKey}?name=${encodeURIComponent(fileName)}` });
+});
+
+/* ---------- Delete a contract record ---------- */
+api.delete('/contracts/:id', async (req, res) => {
+  const cRow = (await query('select * from contracts where id=$1', [req.params.id])).rows[0];
+  if (!cRow) return res.status(404).json({ error: 'not found' });
+  await tx(async (c) => {
+    await c.query('delete from contracts where id=$1', [req.params.id]);
+    // If this was the project's active contract, point to next most recent or clear
+    if (cRow.project_id) {
+      const remaining = (await c.query('select file_key, output_filename from contracts where project_id=$1 order by created_at desc limit 1', [cRow.project_id])).rows[0];
+      await c.query('update projects set contract_file_key=$1, contract_file_name=$2, updated_at=now() where id=$3',
+        [remaining?.file_key || null, remaining?.output_filename || null, cRow.project_id]);
+    }
+  });
+  res.json({ ok: true });
+});
+
+/* ---------- Upload countersigned (executed) contract ---------- */
+api.post('/projects/:id/contract/upload', memUpload.single('file'), async (req, res) => {
+  const projRow = await query('select * from projects where id=$1', [req.params.id]);
+  if (!projRow.rowCount) return res.status(404).json({ error: 'project not found' });
+  const proj = projRow.rows[0];
+  const f = req.file;
+  if (!f) return res.status(400).json({ error: 'no file' });
+
+  const propRow = (await query('select contract_code from properties where code=$1', [proj.property_code])).rows[0];
+  const code = propRow?.contract_code || proj.property_code;
+
+  // Derive naming data from most recent contract record (or fall back to project)
+  const cRow = (await query('select * from contracts where project_id=$1 order by created_at desc limit 1', [proj.id])).rows[0];
+  const contractor = cRow?.contractor || proj.contractor || '';
+  const total = cRow?.total != null ? Number(cRow.total) : (proj.anticipated_cost != null ? Number(proj.anticipated_cost) : null);
+  const scope = cRow?.scope || proj.name || '';
+  const effectiveDate = cRow?.effective_date ? new Date(cRow.effective_date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+
+  const fileName = monarchFileName(code, effectiveDate, contractor, total, scope, 'Full Executed');
+  const fileKey = await storeFile(fileName, f.mimetype || 'application/pdf', f.buffer);
+
+  await tx(async (c) => {
+    if (cRow) {
+      // Replace the existing contract record's file with the executed version
+      await c.query('update contracts set file_key=$1, output_filename=$2 where id=$3', [fileKey, fileName, cRow.id]);
+    } else {
+      await c.query(
+        `insert into contracts(id,project_id,property_code,output_filename,contractor,total,scope,file_key)
+         values($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [uid('C'), proj.id, proj.property_code, fileName, contractor, total, scope, fileKey]
+      );
+    }
+    // Auto-tick signed + contractSaved, cascade all prior steps
+    let steps: Record<string, boolean> = {};
+    try { steps = typeof proj.steps === 'string' ? JSON.parse(proj.steps) : (proj.steps || {}); } catch { steps = {}; }
+    const savedIdx = STEP_KEYS.indexOf('contractSaved');
+    STEP_KEYS.slice(0, savedIdx + 1).forEach(k => {
+      if (!proj.no_contract || !CONTRACT_STEPS.includes(k)) steps[k] = true;
+    });
+    steps['signed'] = true;
+    steps['contractSaved'] = true;
+    await c.query('update projects set contract_file_key=$1, contract_file_name=$2, steps=$3, updated_at=now() where id=$4',
+      [fileKey, fileName, JSON.stringify(steps), proj.id]);
+  });
+
+  res.json({ fileKey, fileName, downloadUrl: `/api/files/${fileKey}?name=${encodeURIComponent(fileName)}` });
 });
 
 /* ---------- cash snapshot (mid-month edit) ---------- */

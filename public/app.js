@@ -349,12 +349,13 @@ function viewContracts(){
     panel.append(el('div',{class:'empty'}, el('div',{class:'big'},'No contracts yet'), 'Generate a contract from a project’s Bids panel, or they’ll appear here once added.'));
   } else {
     const t=el('table',{class:'tbl'});
-    t.append(el('thead',{},tr(th('#'),th('Contract'),th('Property'),th('Owner entity'),th('Contractor'),th('Total','r'),th('Effective'),th('Term end'),th('Scope'))));
+    t.append(el('thead',{},tr(th('#'),th('Contract'),th('Property'),th('Owner entity'),th('Contractor'),th('Total','r'),th('Effective'),th('Term end'),th('Scope'),th(''))));
     const tb=el('tbody');
     list.forEach((c,i)=>{
       const fileCell = c.fileKey
         ? el('a',{href:`/api/files/${c.fileKey}?name=${encodeURIComponent(c.outputFilename||'contract.pdf')}`,title:'Download'}, c.outputFilename)
         : el('span',{title:'Tracking record — PDF not stored in app',style:'color:var(--ink-2)'}, c.outputFilename);
+      const delBtn=el('button',{class:'btn ghost sm',style:'color:var(--rust);padding:2px 7px',title:'Delete contract',onclick:e=>{e.stopPropagation();deleteContract(c.id);}},'✕');
       tb.append(tr(
         el('td',{class:'num'},String(i+1)),
         td(fileCell),
@@ -364,7 +365,8 @@ function viewContracts(){
         el('td',{class:'num r'},usd(c.total)),
         td(fmtDate(c.effectiveDate)),
         td(fmtDate(c.termEnd)),
-        td(c.scope||'—')));
+        td(c.scope||'—'),
+        el('td',{},delBtn)));
     });
     t.append(tb);
     panel.append(el('div',{style:'overflow:auto'},t));
@@ -1109,6 +1111,48 @@ function openProject(id,preset){
   function drawBids(){ slotsWrap.innerHTML=''; for(let i=0;i<3;i++) slotsWrap.append(bidSlot(i)); refreshMeta(); refreshGen(); }
   drawBids(); bidsWrap.append(summary,bidBody); b.append(bidsWrap);
 
+  // --- countersigned contract upload ---
+  if(!p.inHouse && !p.noContract){
+    const csWrap=el('details',{class:'panel acc',style:'margin-top:16px',...(p.steps&&p.steps.signed?{open:''}:{})});
+    const csMeta=el('span',{class:'bs-meta'});
+    const csSum=el('summary',{class:'ph as-summary'},el('span',{class:'chev'},'▸'),el('h3',{},'Countersigned Contract'),el('div',{class:'sp'}),csMeta);
+    const csBody=el('div',{class:'sb'});
+    csBody.append(el('p',{class:'bs-hint',style:'margin-top:0'},'Drop the fully-executed PDF here. Auto-ticks "Signed & Countersigned" and "Contract Filed" in the lifecycle.'));
+    const csDropzone=el('div',{class:'drop-target',style:'border:2px dashed var(--line-2);border-radius:8px;padding:24px 16px;text-align:center;cursor:pointer;color:var(--ink-3);font-size:13px',
+      ondragover:e=>{e.preventDefault();csDropzone.style.borderColor='var(--accent)';},
+      ondragleave:()=>{csDropzone.style.borderColor='var(--line-2)';},
+      ondrop:async e=>{e.preventDefault();csDropzone.style.borderColor='var(--line-2)';const file=e.dataTransfer.files[0];if(file)await uploadExecuted(file);},
+      onclick:()=>csInput.click()
+    },'📄 Drop fully-executed PDF here, or click to browse');
+    const csInput=el('input',{type:'file',accept:'application/pdf',style:'display:none',onchange:async e=>{if(e.target.files[0])await uploadExecuted(e.target.files[0]);}});
+    const csResult=el('div',{style:'margin-top:10px'});
+    async function uploadExecuted(file){
+      csDropzone.textContent='Uploading…'; csDropzone.style.opacity='.6';
+      try{
+        try{ await saveProjectSilent(p); }catch(se){ console.warn('pre-save failed:',se.message); }
+        const fd=new FormData(); fd.append('file',file);
+        const r=await fetch('/api/projects/'+p.id+'/contract/upload',{method:'POST',body:fd});
+        if(!r.ok){ const e=await r.json().catch(()=>({})); csDropzone.textContent='Upload failed: '+(e.error||r.status); csDropzone.style.opacity='1'; return; }
+        const out=await r.json();
+        csDropzone.textContent='📄 Drop fully-executed PDF here, or click to browse'; csDropzone.style.opacity='1';
+        csResult.innerHTML='';
+        csResult.append(el('div',{style:'display:flex;align-items:center;gap:8px;padding:8px 0'},
+          el('a',{href:out.downloadUrl,class:'btn ghost sm'},'⬇ '+out.fileName),
+          el('span',{style:'color:var(--ink-3);font-size:12px'},'Lifecycle updated ✓')
+        ));
+        csMeta.textContent='Uploaded ✓'; csWrap.open=true;
+        await afterWrite('Executed contract uploaded');
+      }catch(e){ csDropzone.textContent='Upload failed: '+e.message; csDropzone.style.opacity='1'; }
+    }
+    function refreshCsMeta(){
+      if(p.steps&&p.steps.signed){ csMeta.textContent='Signed ✓'; csWrap.open=true; }
+      else{ csMeta.textContent='Awaiting countersigned copy'; }
+    }
+    refreshCsMeta();
+    csBody.append(csDropzone,csInput,csResult);
+    csWrap.append(csSum,csBody); b.append(csWrap);
+  }
+
   // --- lifecycle steps ---
   const stepsPanel=el('div',{class:'panel',style:'margin-top:16px'});
   stepsPanel.append(el('div',{class:'ph'}, el('h3',{},'Lifecycle'), el('div',{class:'sp'}),
@@ -1638,5 +1682,17 @@ function tdn(n,money){return el('td',{class:'num r'},money?fmt(n):(n==null?'—'
 
 /* ---------- toast ---------- */
 let _toastT;function toast(msg){let t=$('.toast');if(t)t.remove();t=el('div',{class:'toast'},msg);document.body.append(t);clearTimeout(_toastT);_toastT=setTimeout(()=>t.remove(),2400);}
+function toastUndo(msg,undoFn){let t=$('.toast');if(t)t.remove();const u=el('button',{class:'btn ghost sm',style:'margin-left:10px;color:inherit;text-decoration:underline;background:none;border:none;cursor:pointer;padding:0',onclick:()=>{undoFn();t.remove();}
+},'Undo');t=el('div',{class:'toast',style:'display:flex;align-items:center;gap:6px'},msg,u);document.body.append(t);clearTimeout(_toastT);_toastT=setTimeout(()=>t.remove(),5000);}
+
+const _pendingDeletes=new Map();
+async function deleteContract(id){
+  const c=S.contracts.find(x=>x.id===id); if(!c) return;
+  const saved=JSON.parse(JSON.stringify(c));
+  S.contracts=S.contracts.filter(x=>x.id!==id); render();
+  const timer=setTimeout(async()=>{ _pendingDeletes.delete(id); try{ await API.send('DELETE','/contracts/'+id); }catch(e){ console.warn('contract delete failed:',e); } },5000);
+  _pendingDeletes.set(id,{record:saved,timer});
+  toastUndo('Contract deleted',()=>{ const pd=_pendingDeletes.get(id); if(!pd) return; clearTimeout(pd.timer); _pendingDeletes.delete(id); S.contracts.push(pd.record); S.contracts.sort((a,b)=>String(a.createdAt||'').localeCompare(String(b.createdAt||''))); render(); });
+}
 
 start();
