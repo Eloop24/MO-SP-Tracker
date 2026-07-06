@@ -1,7 +1,8 @@
 import pg from 'pg';
 import 'dotenv/config';
 import type { AppState, Project, Bid, ProgressNote, CashSnapshot, CashAdjustment, GLLine } from '../shared/domain.js';
-import { regionFor, managerFor } from '../shared/domain.js';
+import { regionFor, managerFor, PROPERTIES } from '../shared/domain.js';
+const _propConfig = new Map(PROPERTIES.map(p => [p.code, p]));
 
 // Numerics come back from pg as strings by default; coerce numeric (1700) to JS number.
 pg.types.setTypeParser(1700, (v) => (v == null ? null : parseFloat(v)));
@@ -121,7 +122,7 @@ export async function assembleState(): Promise<AppState> {
     notesByProject.set(n.project_id, arr);
   }
 
-  const properties = props.rows.map((r) => ({ code: r.code, name: r.name, region: r.region, manager: r.manager, spBudget: r.sp_budget ?? 0, units: r.units ?? 0, ownerEntity: r.owner_entity ?? '', address: r.address ?? '', ownerNoticeAddr: r.owner_notice_addr ?? '', contractCode: r.contract_code ?? r.code }));
+  const properties = props.rows.map((r) => { const cfg = _propConfig.get(r.code); return { code: r.code, name: r.name, region: r.region, manager: r.manager, spBudget: r.sp_budget ?? 0, units: r.units ?? 0, ownerEntity: r.owner_entity || cfg?.ownerEntity || '', address: r.address || cfg?.address || '', ownerNoticeAddr: r.owner_notice_addr ?? '', contractCode: r.contract_code ?? r.code }; });
 
   const contractRecords = contracts.rows.map((r) => ({ id: r.id, projectId: r.project_id, property: r.property_code, outputFilename: r.output_filename, ownerEntity: r.owner_entity ?? '', contractor: r.contractor ?? '', total: r.total, effectiveDate: r.effective_date ? d(r.effective_date) : '', termEnd: r.term_end ? d(r.term_end) : '', scope: r.scope ?? '', fileKey: r.file_key, createdAt: r.created_at ? new Date(r.created_at).toISOString() : '' }));
   const projects: Project[] = projs.rows.map((r) => rowToProject(r, bidsByProject.get(r.id) || [], notesByProject.get(r.id) || []));
