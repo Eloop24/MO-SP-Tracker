@@ -1342,6 +1342,128 @@ function openProject(id,preset){
 }
 
 /* =========================================================
+   BUDGET TRACKER
+========================================================= */
+function budgetTracker(code){
+  const projs=projForProp(code).filter(p2=>!p2.inHouse);
+  const gls=S.gl.filter(g=>g.property===code);
+  /* GL totals by category — used as auto-fill when actualCost is null */
+  const glByCat={};
+  gls.forEach(g=>{ const c=g.category||''; glByCat[c]=(glByCat[c]||0)+(Number(g.amount)||0); });
+  function effectiveSpent(pr){ return pr.actualCost!=null?Number(pr.actualCost):(glByCat[pr.category]||0); }
+  const totalBudget=projs.reduce((a,p2)=>a+(Number(p2.anticipatedCost)||0),0);
+  const totalSpent=projs.reduce((a,p2)=>a+effectiveSpent(p2),0);
+  const totalVar=totalSpent-totalBudget; /* negative = underspent = available */
+  const panel=el('div',{class:'panel'});
+  panel.append(el('div',{class:'ph'},
+    el('h3',{},'SP Budget Tracker'), el('div',{class:'sp'}),
+    el('span',{class:'chip'},projs.length+' projects'),
+    gls.length?el('span',{class:'chip'},'GL loaded · '+gls.length+' lines'):null));
+  /* summary strip */
+  const strip=el('div',{style:'display:flex;gap:0;border-bottom:1px solid var(--line-2)'});
+  const kk=(label,val,extra)=>{
+    const d=el('div',{style:'flex:1;padding:12px 16px;text-align:center;border-right:1px solid var(--line-2)'});
+    d.append(el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600'},label));
+    d.append(el('div',{class:'mono',style:'font-size:18px;font-weight:700;margin-top:3px'+(extra?' color:'+extra:'')},fmt(val)));
+    return d;
+  };
+  const varColor=totalVar>500?'var(--rust)':totalVar<-500?'var(--green)':'var(--ink)';
+  const varEl=el('div',{style:'flex:1;padding:12px 16px;text-align:center'});
+  varEl.append(el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600'},'Variance'));
+  varEl.append(el('div',{class:'mono',style:`font-size:18px;font-weight:700;margin-top:3px;color:${varColor}`},(totalVar>=0?'+':'')+fmt(totalVar,false)));
+  varEl.append(el('div',{style:'font-size:11px;color:var(--ink-3);margin-top:2px'},
+    totalVar<-100?fmt(Math.abs(totalVar),false)+' available to reallocate':totalVar>100?'over budget':'on budget'));
+  strip.append(kk('Total Budget',totalBudget),kk('Total Spent',totalSpent),varEl);
+  panel.append(strip);
+  /* per-project rows */
+  const list=el('div');
+  const sorted=[...projs].sort((a,b)=>(stage(b)-stage(a))||((Number(b.anticipatedCost)||0)-(Number(a.anticipatedCost)||0)));
+  sorted.forEach(pr=>{
+    const budget=Number(pr.anticipatedCost)||0;
+    const spent=effectiveSpent(pr);
+    const variance=spent-budget;
+    const usedRatio=budget?Math.min(spent/budget,1.5):0;
+    const clampPct=budget?Math.min(spent/budget,1):0;
+    const isOver=budget>0&&spent>budget;
+    const isWarn=!isOver&&budget>0&&spent/budget>=0.75;
+    const barColor=isOver?'var(--rust)':isWarn?'var(--amber)':'var(--green)';
+    const isGLAuto=pr.actualCost==null&&(glByCat[pr.category]||0)>0;
+    const row=el('div',{style:'padding:14px 16px;border-bottom:1px solid var(--line-2)'});
+    /* name + category + timing */
+    const topLine=el('div',{style:'display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap'});
+    topLine.append(
+      el('strong',{style:'font-size:13px;flex:1;min-width:0;cursor:pointer;text-decoration:underline dotted',onclick:()=>openProject(pr.id)},pr.name||'(untitled)'),
+      el('span',{style:'font-size:11px;background:var(--panel-2);border:1px solid var(--line-2);border-radius:4px;padding:2px 7px;color:var(--ink-2);white-space:nowrap'},pr.category||'—'),
+      pr.plannedStart?el('span',{style:'font-size:11px;color:var(--ink-3);white-space:nowrap'},pr.plannedStart):null
+    );
+    /* bar */
+    const barBg=el('div',{style:'background:var(--line);border-radius:6px;height:10px;margin-bottom:10px;overflow:hidden;position:relative'});
+    barBg.append(el('div',{style:`width:${Math.round(clampPct*100)}%;height:100%;background:${barColor};border-radius:6px;transition:width .4s`}));
+    /* numbers */
+    const nums=el('div',{style:'display:flex;gap:20px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px'});
+    const numCell=(label,content)=>{ const d=el('div',{}); d.append(el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);margin-bottom:2px'},label)); d.append(content); return d; };
+    /* budget cell */
+    nums.append(numCell('Budget',el('span',{class:'mono',style:'font-size:15px;font-weight:700'},budget?fmt(budget):'—')));
+    /* spent cell — click to edit */
+    const spentCell=el('div',{});
+    function redrawSpent(){
+      spentCell.innerHTML='';
+      const s=effectiveSpent(pr);
+      const lbl=isGLAuto?'Spent (GL auto)':'Spent';
+      spentCell.append(el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);margin-bottom:2px'},lbl));
+      const row2=el('div',{style:'display:flex;gap:5px;align-items:center;cursor:pointer',title:'Click to edit',
+        onclick:()=>{
+          spentCell.innerHTML='';
+          spentCell.append(el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);margin-bottom:2px'},'Spent'));
+          const inp=el('input',{type:'number',value:pr.actualCost!=null?pr.actualCost:'',placeholder:'0',
+            style:'width:110px;padding:4px 8px;font-size:13px;border:1px solid var(--accent,#c2802b);border-radius:5px;font-family:var(--mono)',
+            onblur:async e=>{const v=e.target.value===''?null:+e.target.value;pr.actualCost=v;await saveProject(pr,'Spent updated');isGLAuto=(pr.actualCost==null&&(glByCat[pr.category]||0)>0);redrawSpent();},
+            onkeydown:e=>{if(e.key==='Enter')e.target.blur();if(e.key==='Escape'){redrawSpent();}}
+          });
+          spentCell.append(inp); inp.focus(); inp.select();
+        }});
+      row2.append(el('span',{class:'mono',style:'font-size:15px;font-weight:700'},s?fmt(s):'—'));
+      row2.append(el('span',{style:'font-size:10px;color:var(--ink-3)'},'✎'));
+      if(pr.actualCost!=null)row2.append(el('button',{class:'btn ghost sm',style:'font-size:10px;padding:1px 5px;margin-left:2px',title:'Clear manual override — revert to GL',
+        onclick:async e=>{e.stopPropagation();pr.actualCost=null;await saveProject(pr,'Cleared override');redrawSpent();}
+      },'×'));
+      spentCell.append(row2);
+    }
+    redrawSpent();
+    nums.append(numCell('',spentCell));
+    /* variance cell */
+    const varC=budget?(variance>=0?'var(--rust)':'var(--green)'):'var(--ink-3)';
+    nums.append(numCell('Variance',el('span',{class:'mono',style:`font-size:15px;font-weight:700;color:${varC}`},budget?(variance>=0?'+':'')+fmt(variance,false):'—')));
+    /* pct used badge */
+    if(budget&&spent>=0)nums.append(el('span',{style:`align-self:flex-end;padding-bottom:1px;font-size:12px;font-weight:600;color:${barColor}`},Math.round(clampPct*100)+'% used'));
+    /* status comment */
+    const stWrap=el('div',{});
+    function redrawStatus(){
+      stWrap.innerHTML='';
+      const note=pr.notes||'';
+      stWrap.append(el('div',{style:'display:flex;gap:6px;align-items:flex-start;cursor:pointer;min-height:20px',title:'Click to edit status',
+        onclick:()=>{
+          stWrap.innerHTML='';
+          const ta=el('textarea',{placeholder:'Add status / comment…',rows:2,
+            style:'width:100%;padding:5px 8px;font-size:12px;border:1px solid var(--accent,#c2802b);border-radius:5px;resize:vertical;box-sizing:border-box',
+            onblur:async e=>{pr.notes=e.target.value;await saveProject(pr,'Status updated');redrawStatus();},
+            onkeydown:e=>{if(e.key==='Escape')redrawStatus();}
+          });
+          ta.value=note; stWrap.append(ta); ta.focus();
+        }},
+        el('span',{style:'font-size:11px;color:var(--ink-3);line-height:1.5'},'💬'),
+        el('span',{style:'font-size:12px;color:'+(note?'var(--ink)':'var(--ink-3);font-style:italic')},note||'Add status comment…')
+      ));
+    }
+    redrawStatus();
+    row.append(topLine,barBg,nums,stWrap); list.append(row);
+  });
+  if(!projs.length)list.append(el('div',{class:'empty'},'No projects yet for this property.'));
+  panel.append(list);
+  return panel;
+}
+
+/* =========================================================
    PROPERTY DETAIL
 ========================================================= */
 function viewProperty(){
@@ -1353,7 +1475,6 @@ function viewProperty(){
   const spent=glSpent||cushSpent||0;
   const remaining=budget-spent;
   const cm=cashModel(code);
-  const am=auditModel(code);
   const usedPct=budget?spent/budget:0;
   const cashToday=cm.cashToday;
   const cpd=p.units?cashToday/Number(p.units):null;
@@ -1477,23 +1598,8 @@ function viewProperty(){
   });
   pj.append(pb); right.append(pj);
 
-  // reconciliation & flags
-  const auditP=el('div',{class:'panel'});
-  const reviewN=am.unplanned.length+am.paidNoGL.length;
-  auditP.append(el('div',{class:'ph'}, el('h3',{},'Reconciliation & flags'), el('div',{class:'sp'}),
-    el('span',{class:'chip'+(reviewN?' hold':' done')}, reviewN?`${reviewN} to review`:'all clear')));
-  const ab=el('div',{class:'pad'});
-  ab.append(el('div',{class:'recon'},
-    reconCell('GL posted',am.glTotal),
-    reconCell('Paid per tracker',cm.paidTotal),
-    reconCell('Difference',am.glTotal-cm.paidTotal,Math.abs(am.glTotal-cm.paidTotal)>OVER_THRESHOLD)));
-  ab.append(flagBlock('Posted over $5,000 — unplanned',
-    am.unplanned.map(g=>({title:g.vendor||g.category,sub:(g.date||'')+' · '+g.category,amt:g.amount})),'rust',
-    'Large ledger postings not linked to a tracked project. Link them on the ledger below, or add the project so the spend is accounted for.'));
-  ab.append(flagBlock('Marked paid — no ledger match',
-    am.paidNoGL.map(p2=>({title:p2.name,sub:p2.category,amt:projOutflow(p2),onclick:()=>openProject(p2.id)})),'amber',
-    'Flagged paid in the tracker but with no linked GL entry to confirm. Link a ledger line below to finalize.'));
-  auditP.append(ab); right.append(auditP);
+  // budget tracker (replaces reconciliation panel)
+  right.append(budgetTracker(code));
 
   // GL
   const gls=S.gl.filter(g=>g.property===code);
@@ -1501,13 +1607,13 @@ function viewProperty(){
   gp.append(el('div',{class:'ph'}, el('h3',{},'General ledger — SP spend'), el('div',{class:'sp'}), el('span',{class:'chip'},`${gls.length} lines`), el('span',{class:'chip'},fmt(glSpent))));
   if(gls.length){
     const t=el('table',{class:'tbl'});
-    t.append(el('thead',{},tr(th('Date'),th('Category'),th('Vendor / description'),th('Amount','r'),th('Match'))));
+    t.append(el('thead',{},tr(th('Date'),th('Category'),th('Vendor / description'),th('Amount','r'))));
     const tbb=el('tbody');
     gls.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
     gls.forEach(g=>{
       tbb.append(tr(td(el('span',{class:'mono',style:'font-size:12px'},g.date)),td(el('span',{style:'font-size:12px'},g.category)),
         td(el('div',{style:'font-size:12px;max-width:260px'}, el('div',{},g.vendor), g.remarks?el('div',{style:'color:var(--ink-3);font-size:11px'},g.remarks):null)),
-        tdn(g.amount,1), td(glLinkCell(g,code))));
+        tdn(g.amount,1)));
     });
     t.append(tbb); gp.append(t);
   } else gp.append(el('div',{class:'empty'},'No ledger lines for this property. Upload a general ledger on the Data tab.'));
