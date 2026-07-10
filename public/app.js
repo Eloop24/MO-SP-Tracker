@@ -1505,6 +1505,185 @@ function budgetTracker(code, glRows){
 ========================================================= */
 function viewProperty(){
   const code=VIEW.prop||S.properties[0].code;
+  if(code==='WVMO') return viewPropertyWVMO();
+  const p=PROP(code); const c=S.cash[code]||{};
+  const budget=Number(p.spBudget)||0;
+  const glSpent=glSpentFor(code);
+  const cushSpent=c.spSpent!=null?Number(c.spSpent):null;
+  const spent=glSpent||cushSpent||0;
+  const remaining=budget-spent;
+  const cm=cashModel(code);
+  const am=auditModel(code);
+  const usedPct=budget?spent/budget:0;
+  const cashToday=cm.cashToday;
+  const cpd=p.units?cashToday/Number(p.units):null;
+  // years remaining on the loan, from the cash record's maturity date (MM/DD/YYYY)
+  let loanYrs=null;
+  if(c.loanDue){ const m=String(c.loanDue).split('/'); if(m.length===3){ const due=new Date(+m[2],+m[0]-1,+m[1]); if(!isNaN(due)){ loanYrs=(due-new Date())/(1000*60*60*24*365.25); } } }
+  const cashPerYr=(loanYrs!=null&&loanYrs>0)?cashToday/loanYrs:null;
+  // conditional formatting
+  const remTone = remaining<0?'bad':(budget&&remaining<budget*0.15?'warn':'good');
+  const cpdTone = cpd==null?'none':(cpd>=3000?'good':(cpd>=2000?'warn':'bad'));   // green >$3k · yellow $2k–$3k · red <$2k
+  const projTone = cm.projectedCash<0?'bad':(cm.projectedCash<cashToday*0.25?'warn':'good');
+  const bar=propHead(p,
+    [ el('button',{class:'btn',onclick:()=>{VIEW.tab='cash';render();}},'Adjust cash'),
+      el('button',{class:'btn accent',onclick:()=>{VIEW.prop=code;openProject(null);}},'+ New project') ],
+    [ hstat('Current cash', fmt(cashToday), 'none', c.asOfDate?('as of '+c.asOfDate):'snapshot + adj'),
+      hstat('SP budget (2026)', fmt(budget), 'none'),
+      hstat('Spent to date', fmt(spent), 'none', 'posted per GL'),
+      hstat('Remaining', fmt(remaining), remTone, pct(usedPct)+' used'),
+      hstat('Projected cash', fmt(cm.projectedCash), projTone, 'after committed'),
+      hstat('Cash / door', cpd==null?'—':fmt(cpd), cpdTone, p.units?`${p.units} units`:'no unit count'),
+      hstat('Cash / yr of loan', cashPerYr==null?'—':fmt(cashPerYr), 'none', loanYrs!=null&&loanYrs>0?`${loanYrs.toFixed(1)} yrs to ${c.loanDue}`:'no loan maturity') ]);
+  const body=el('div',{class:'grid',style:'grid-template-columns:330px 1fr'});
+
+  // LEFT: cash + loan
+  const left=el('div',{class:'grid',style:'gap:16px;align-content:start'});
+  const cashPanel=el('div',{class:'panel'});
+  cashPanel.append(el('div',{class:'ph'}, el('h3',{},'Cash position'), el('div',{class:'sp'}), el('span',{class:'chip'},`snapshot ${c.asOfDate||S.meta.cashAsOf||'—'}`)));
+  const sl=el('div',{class:'pad stat-list'});
+  const row=(k,v,cls,sub)=>el('div',{class:'sl'+(cls?' '+cls:'')}, el('span',{class:'k'},k,sub?el('span',{class:'sl-sub'},sub):null), el('span',{class:'v'+(typeof v==='number'&&v<0?' neg':'')},typeof v==='number'?fmt(v):v));
+  // Projected cash with an expandable, line-by-line breakdown by status.
+  const projCashRow=(()=>{
+    const mini=(k,v,o={})=>el('div',{style:`display:flex;justify-content:space-between;gap:10px;padding:2px 0;font-size:12px;${o.strong?'font-weight:600;':'color:var(--ink-2);'}${o.indent?'padding-left:16px;':''}`},
+      el('span',{},k), el('span',{class:'mono'+((typeof v==='number'&&v<0)?' neg':'')}, typeof v==='number'?fmt(v):v));
+    const grp=t=>el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);margin:8px 0 2px'},t);
+    const bd=el('div',{style:'padding:8px 0 2px;border-top:1px dashed var(--line-2);margin-top:6px'});
+    bd.append(mini('Cash today',cm.cashToday,{strong:true}));
+    if(cm.outstanding.length){
+      bd.append(grp('Less — outstanding (approved, not yet paid)'));
+      cm.outstanding.forEach(p=>bd.append(mini('− '+(p.name||'(untitled)'), -(p.inHouse?ihRemaining(p):projOutflow(p)), {indent:true})));
+      bd.append(mini('Subtotal outstanding', -cm.outstandingTotal, {strong:true,indent:true}));
+    } else { bd.append(mini('Less — outstanding', 0, {indent:true})); }
+    bd.append(mini('= Projected cash', cm.projectedCash, {strong:true}));
+    if(cm.paid.length){
+      bd.append(grp('For reference — paid (already out)'));
+      cm.paid.forEach(p=>bd.append(mini(p.name||'(untitled)', (p.inHouse?ihDone(p):projOutflow(p)), {indent:true})));
+    }
+    if(cm.discussed.length){
+      bd.append(grp('For reference — discussed (not committed)'));
+      cm.discussed.forEach(p=>bd.append(mini(p.name||'(untitled)', projOutflow(p), {indent:true})));
+    }
+    const d=el('details',{});
+    d.append(el('summary',{class:'sl',style:'cursor:pointer;align-items:flex-start'},
+      el('span',{class:'k'},'Projected cash', el('span',{class:'sl-sub'},'once open work is paid · show math')),
+      el('span',{class:'v'+(cm.projectedCash<0?' neg':'')}, fmt(cm.projectedCash))), bd);
+    return d;
+  })();
+  sl.append(
+    row('Cash snapshot', cm.snapshot==null?'—':cm.snapshot,null,'from cushion report'),
+    row('Mid-month adjustments', cm.adj),
+    row('Cash today', cm.cashToday,'hl','final · actual'),
+    row('Outstanding commitments', cm.outstandingTotal?-cm.outstandingTotal:0,null,'approved, not yet paid'),
+    projCashRow,
+    row('Spent vs SP budget', budget-(spent+cm.outstandingTotal),null,'budget less spent & committed'),
+    cm.discussedTotal?row('Discussed / ideas', cm.discussedTotal,null,'not yet committed'):null,
+  );
+  cashPanel.append(sl); left.append(cashPanel);
+
+  const loanPanel=el('div',{class:'panel'});
+  loanPanel.append(el('div',{class:'ph'}, el('h3',{},'Loan & valuation')));
+  const sl3=el('div',{class:'pad stat-list'});
+  sl3.append(
+    row('Market value', c.marketValue!=null?Number(c.marketValue):'—'),
+    row('Loan amount', c.loanAmount!=null?Number(c.loanAmount):'—'),
+    row('LTV', c.ltv!=null?pct(c.ltv):'—'),
+    row('Loan rate', c.loanRate!=null?pct(c.loanRate):'—'),
+    row('Loan matures', c.loanDue||'—'),
+    row('DCR', c.dcr!=null?Number(c.dcr).toFixed(2)+'x':'—'),
+    row('NOI', c.noi!=null?Number(c.noi):'—'),
+    row('Units', p.units||'—'),
+  );
+  loanPanel.append(sl3); left.append(loanPanel);
+
+  // RIGHT: projects (grouped) + reconciliation + GL
+  const right=el('div',{class:'grid',style:'gap:16px;align-content:start'});
+  const projs=projForProp(code).filter(p2=>inDateRange(p2,PFILT));
+  const pj=el('div',{class:'panel'});
+  const counts={}; PHASES.forEach(ph=>counts[ph.key]=projs.filter(p2=>phase(p2)===ph.key).length);
+  pj.append(el('div',{class:'ph'}, el('h3',{},'Projects'), el('div',{class:'sp'}), el('span',{class:'chip'},`${projs.length} total`)));
+  // phase filter chips — click to hide/show a completion group
+  const filt=el('div',{class:'phasefilt'});
+  PHASES.forEach(ph=>{ if(!counts[ph.key])return; const hidden=!!PFILT.hide[ph.key];
+    filt.append(el('button',{class:'pf-chip'+(hidden?' off':''),title:hidden?'Show':'Hide',onclick:()=>{PFILT.hide[ph.key]=!PFILT.hide[ph.key];render();}},
+      el('span',{},ph.label), el('span',{class:'pf-n'},String(counts[ph.key]))));
+  });
+  pj.append(el('div',{class:'pad',style:'padding-bottom:8px'},dateFilterGroup(PFILT),el('div',{style:'height:9px'}),filt,
+    el('div',{style:'font-size:11px;color:var(--ink-3);margin-top:8px'},'Auto-grouped by completion. Click a group to hide it; 📌 pins a project to the top.')));
+  const pb=el('div',{style:'max-height:560px;overflow:auto;padding-bottom:6px'});
+  if(!projs.length)pb.append(el('div',{class:'empty'},'No projects yet for this property.'));
+  function projRow(pr){
+    const ih=isInHouse(pr);
+    const r=el('div',{class:'clickrow proj-row',style:'padding:11px 16px;border-bottom:1px solid var(--line-2)',onclick:()=>openProject(pr.id)});
+    const topr=el('div',{style:'display:flex;gap:8px;align-items:center;margin-bottom:6px'},
+      el('button',{class:'pinbtn'+(pr.pinned?' on':''),title:pr.pinned?'Unpin':'Pin to top',onclick:e=>{e.stopPropagation();pr.pinned=!pr.pinned;saveProject(pr,pr.pinned?'Pinned':'Unpinned');}},'📌'),
+      el('strong',{style:'font-size:13px;flex:1;min-width:0'},pr.name),
+      ih?el('span',{class:'chip ih'},'In-house'):null,
+      el('span',{style:'font-size:11px;color:var(--ink-3)'},pr.category),
+      el('span',{style:'font-size:11px;color:var(--ink-3);white-space:nowrap'},'· '+fmtDate(pr.dateAdded)),
+      el('span',{class:'mono',style:'font-size:12px;font-weight:600'},fmt(ih?ihTotal(pr):(pr.actualCost!=null?pr.actualCost:pr.anticipatedCost),false)));
+    r.append(topr, ih?progressEl(pr):trackEl(pr));
+    return r;
+  }
+  const pinned=projs.filter(p2=>p2.pinned && !PFILT.hide[phase(p2)]);
+  if(pinned.length){ pb.append(el('div',{class:'grp-h pinned'},'📌 Pinned', el('span',{class:'grp-n'},String(pinned.length)))); pinned.forEach(pr=>pb.append(projRow(pr))); }
+  PHASES.forEach(ph=>{
+    if(PFILT.hide[ph.key])return;
+    const list=projs.filter(p2=>phase(p2)===ph.key && !p2.pinned);
+    if(!list.length)return;
+    list.sort((a,b)=>(stage(b)-stage(a))||(b.dateAdded||'').localeCompare(a.dateAdded||''));
+    pb.append(el('div',{class:'grp-h'}, ph.label, el('span',{class:'grp-n'},String(list.length))));
+    list.forEach(pr=>pb.append(projRow(pr)));
+  });
+  pj.append(pb); right.append(pj);
+
+  // reconciliation & flags
+  const auditP=el('div',{class:'panel'});
+  const reviewN=am.unplanned.length+am.paidNoGL.length;
+  auditP.append(el('div',{class:'ph'}, el('h3',{},'Reconciliation & flags'), el('div',{class:'sp'}),
+    el('span',{class:'chip'+(reviewN?' hold':' done')}, reviewN?`${reviewN} to review`:'all clear')));
+  const ab=el('div',{class:'pad'});
+  ab.append(el('div',{class:'recon'},
+    reconCell('GL posted',am.glTotal),
+    reconCell('Paid per tracker',cm.paidTotal),
+    reconCell('Difference',am.glTotal-cm.paidTotal,Math.abs(am.glTotal-cm.paidTotal)>OVER_THRESHOLD)));
+  ab.append(flagBlock('Posted over $5,000 — unplanned',
+    am.unplanned.map(g=>({title:g.vendor||g.category,sub:(g.date||'')+' · '+g.category,amt:g.amount})),'rust',
+    'Large ledger postings not linked to a tracked project. Link them on the ledger below, or add the project so the spend is accounted for.'));
+  ab.append(flagBlock('Marked paid — no ledger match',
+    am.paidNoGL.map(p2=>({title:p2.name,sub:p2.category,amt:projOutflow(p2),onclick:()=>openProject(p2.id)})),'amber',
+    'Flagged paid in the tracker but with no linked GL entry to confirm. Link a ledger line below to finalize.'));
+  auditP.append(ab); right.append(auditP);
+
+  // GL
+  const gls=S.gl.filter(g=>g.property===code);
+  const gp=el('div',{class:'panel',style:'overflow:auto'});
+  gp.append(el('div',{class:'ph'}, el('h3',{},'General ledger — SP spend'), el('div',{class:'sp'}), el('span',{class:'chip'},`${gls.length} lines`), el('span',{class:'chip'},fmt(glSpent))));
+  if(gls.length){
+    const t=el('table',{class:'tbl'});
+    t.append(el('thead',{},tr(th('Date'),th('Category'),th('Vendor / description'),th('Amount','r'),th('Match'))));
+    const tbb=el('tbody');
+    gls.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    gls.forEach(g=>{
+      tbb.append(tr(td(el('span',{class:'mono',style:'font-size:12px'},g.date)),td(el('span',{style:'font-size:12px'},g.category)),
+        td(el('div',{style:'font-size:12px;max-width:260px'}, el('div',{},g.vendor), g.remarks?el('div',{style:'color:var(--ink-3);font-size:11px'},g.remarks):null)),
+        tdn(g.amount,1), td(glLinkCell(g,code))));
+    });
+    t.append(tbb); gp.append(t);
+  } else gp.append(el('div',{class:'empty'},'No ledger lines for this property. Upload a general ledger on the Data tab.'));
+  right.append(gp);
+
+  body.append(left,right);
+  return {bar,body};
+}
+
+/* WVMO — budget-tracker layout (pilot) */
+
+/* =========================================================
+   PROPERTY DETAIL
+========================================================= */
+function viewPropertyWVMO(){
+  const code=VIEW.prop||S.properties[0].code;
   const p=PROP(code); const c=S.cash[code]||{};
   const budget=Number(p.spBudget)||0;
   const glSpent=glSpentFor(code);
@@ -1639,6 +1818,7 @@ function viewProperty(){
   return {bar,body};
 }
 /* GL link cell: shows the linked project or a Match button with a best-guess hint. */
+
 function glLinkCell(g,code){
   const cell=el('div',{class:'gl-link'});
   if(g.linkedProjectId){
@@ -1778,27 +1958,7 @@ function viewCash(){
   }
   ap.append(ab); body.append(ap);
 
-  // loan & valuation — moved here from property detail
-  const lp=el('div',{class:'panel',style:'grid-column:1/-1'});
-  lp.append(el('div',{class:'ph'}, el('h3',{},'Loan & valuation by property')));
-  const lt=el('table',{class:'tbl'});
-  lt.append(el('thead',{},tr(th('Property'),th('Market value','r'),th('Loan amount','r'),th('LTV','r'),th('Rate','r'),th('Matures','r'),th('DCR','r'),th('NOI','r'),th('Units','r'))));
-  const ltb=el('tbody');
-  S.properties.forEach(pr2=>{
-    const cv=S.cash[pr2.code]||{};
-    ltb.append(el('tr',{class:'clickrow',onclick:()=>{VIEW.tab='property';VIEW.prop=pr2.code;render();}},
-      td(el('strong',{},pr2.code)),
-      tdn(cv.marketValue!=null?Number(cv.marketValue):null,1),
-      tdn(cv.loanAmount!=null?Number(cv.loanAmount):null,1),
-      td(el('span',{class:'mono'},cv.ltv!=null?pct(cv.ltv):'—'),'r'),
-      td(el('span',{class:'mono'},cv.loanRate!=null?pct(cv.loanRate):'—'),'r'),
-      td(el('span',{class:'mono',style:'font-size:12px'},cv.loanDue||'—'),'r'),
-      td(el('span',{class:'mono'},cv.dcr!=null?Number(cv.dcr).toFixed(2)+'x':'—'),'r'),
-      tdn(cv.noi!=null?Number(cv.noi):null,1),
-      td(el('span',{class:'mono'},pr2.units||'—'),'r')
-    ));
-  });
-  lt.append(ltb); lp.append(lt); body.append(lp);
+  ap.append(ab); body.append(ap);
   return {bar,body};
 }
 function openAdjust(){
