@@ -29,6 +29,21 @@ const SP_COMPLETE_IDS=["P001","P002","P003","P004","P005","P006","P007","P008","
 
 /* ---------- Helpers ---------- */
 const $ = (s,r=document)=>r.querySelector(s);
+/* ── Drag autoscroll: scroll the page when dragging near top/bottom edge ── */
+(()=>{
+  let _raf=null,_y=0;
+  const tick=()=>{
+    const edge=120,spd=12,vh=window.innerHeight;
+    if(_y<edge) window.scrollBy(0,-spd*(1-_y/edge));
+    else if(_y>vh-edge) window.scrollBy(0,spd*((_y-(vh-edge))/edge));
+    _raf=requestAnimationFrame(tick);
+  };
+  document.addEventListener('dragstart',()=>{if(_raf)cancelAnimationFrame(_raf);_raf=requestAnimationFrame(tick);});
+  document.addEventListener('dragend',()=>{if(_raf){cancelAnimationFrame(_raf);_raf=null;}});
+  document.addEventListener('drop',()=>{if(_raf){cancelAnimationFrame(_raf);_raf=null;}});
+  document.addEventListener('dragover',e=>{_y=e.clientY;},{passive:true});
+})();
+
 const el = (t,a={},...kids)=>{const n=document.createElement(t);for(const k in a){if(k==='class')n.className=a[k];else if(k==='html')n.innerHTML=a[k];else if(k.startsWith('on'))n.addEventListener(k.slice(2),a[k]);else if(a[k]!=null)n.setAttribute(k,a[k]);}for(let c of kids){if(c==null||c===false)continue;n.append(c.nodeType?c:document.createTextNode(c));}return n;};
 const fmt = (n,dash=true)=>{if(n==null||n===''||isNaN(n))return dash?'—':'';const v=Math.round(Number(n));const s=Math.abs(v).toLocaleString('en-US');return v<0?`($${s})`:`$${s}`;};
 const fmt1=(n)=>{if(n==null||isNaN(n))return '—';return '$'+Number(n).toLocaleString('en-US',{maximumFractionDigits:0});};
@@ -1800,13 +1815,8 @@ function viewPropertyWVMO(){
         el('span',{class:'mono',style:'font-size:12px;font-weight:600'},fmt(ih?ihTotal(pr):(pr.actualCost!=null?pr.actualCost:pr.anticipatedCost),false)),
         (()=>{const sel=el('select',{style:'font-size:11px;padding:2px 6px;border:1px solid var(--line);border-radius:4px;background:var(--panel-2);color:var(--ink-2);max-width:180px',title:'Assign to SP Budget item',onclick:e=>e.stopPropagation(),onchange:async e=>{
     e.stopPropagation();
-    const biId=e.target.value||null;
-    pr.linkedBudgetItemId=biId;
+    pr.linkedBudgetItemId=e.target.value||null;
     await saveProject(pr,'Budget item assigned');
-    if(biId){
-      const bi=budgetItems.find(x=>x.id===biId);
-      if(bi){const n=await autoMatchForItem(bi);if(n)toast(`Linked ${n} GL line${n===1?'':'s'} to ${bi.name}`);}
-    }
   }});sel.append(el('option',{value:''},'— SP Budget item —'));budgetItems.forEach(bi=>sel.append(el('option',{value:bi.id},bi.name)));sel.value=pr.linkedBudgetItemId||'';return sel;})()),
       ih?progressEl(pr):trackEl(pr));
     return r;
