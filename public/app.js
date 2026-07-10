@@ -2188,15 +2188,72 @@ function viewPropertyBudgetTracker(code){
     tbody.append(el('tr',{style:'background:var(--canvas)'},
       el('td',{colspan:'6',style:'padding:5px 16px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:700;border-top:2px solid var(--line)'},'⚠ Unbudgeted GL Spend')));
     groups.forEach(grp=>{
-      tbody.append(el('tr',{style:'background:var(--canvas);border-bottom:1px solid var(--line-2);opacity:.9'},
+      const notesKey='unbgd_notes_'+code+'_'+grp.key;
+      let ubExpanded=false;
+      const chevron=el('span',{style:'color:var(--ink-3);font-size:10px;margin-left:4px;user-select:none'},'▼');
+      const mainRow=el('tr',{style:'background:rgba(180,120,0,.05);border-bottom:1px solid var(--line-2);cursor:pointer',
+        onclick:()=>{ubExpanded=!ubExpanded;detailRow2.style.display=ubExpanded?'':'none';chevron.textContent=ubExpanded?'▲':'▼';}});
+      mainRow.append(
         el('td',{style:'padding:7px 12px;font-size:11px;color:var(--amber);font-family:var(--mono)'},grp.key),
         el('td',{style:'padding:7px 12px;font-size:12px;color:var(--ink-2)'},
-          el('div',{},grp.label.replace(/^SP\s*/i,'').slice(0,40)),
-          el('div',{style:'font-size:10.5px;color:var(--ink-3)'},grp.lines.length+' line'+(grp.lines.length===1?'':'s')+' · no budget set')),
+          el('div',{style:'display:flex;align-items:center;gap:6px'},
+            el('span',{style:'font-size:13px;font-weight:600'},grp.label.replace(/^SP\s*/i,'').slice(0,40)),
+            chevron),
+          el('div',{style:'font-size:10.5px;color:var(--ink-3);margin-top:2px'},grp.lines.length+' line'+(grp.lines.length===1?'':'s')+' · no budget set')),
         el('td',{style:'padding:7px 16px;text-align:right;color:var(--ink-3)'},'—'),
         el('td',{style:'padding:7px 16px;text-align:right;font-family:var(--mono);font-size:12px'},fmt(grp.total,false)),
         el('td',{style:'padding:7px 16px;text-align:right;color:var(--ink-3)'},'—'),
-        el('td',{style:'padding:7px 16px;text-align:right;font-family:var(--mono);font-weight:700;color:var(--rust)'},'+'+fmt(grp.total,false))));
+        el('td',{style:'padding:7px 16px;text-align:right;font-family:var(--mono);font-weight:700;color:var(--rust)'},'+'+fmt(grp.total,false)));
+      const detailRow2=el('tr',{style:'display:none;background:rgba(180,120,0,.03);border-bottom:2px solid rgba(180,120,0,.15)'});
+      const detailCell2=el('td',{colspan:'6',style:'padding:10px 16px'});
+      function redrawUnbgd(){
+        detailCell2.innerHTML='';
+        const layout2=el('div',{style:'display:grid;grid-template-columns:1fr 280px;gap:14px;align-items:start'});
+        const lCol=el('div'); const rCol=el('div',{style:'border-left:1px solid var(--line-2);padding-left:14px'});
+        const linesHere=allGls.filter(g=>Number(g.amount)>0&&!g.ignored&&!budgetItems.some(bi=>bi.id===g.linkedProjectId)&&(g.account||g.category||'Other')===grp.key);
+        if(linesHere.length){
+          lCol.append(el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3);font-weight:700;margin-bottom:8px'},
+            'GL Charges · '+linesHere.length+' line'+(linesHere.length===1?'':'s')+' · '+fmt(grp.total,false)));
+          const cw=el('div',{style:'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px'});
+          linesHere.forEach(g=>{
+            const gs2=String(g.id);
+            const chip2=el('div',{draggable:'true',title:'Drag to assign to a budget item',
+              style:'display:flex;flex-direction:column;background:rgba(180,120,0,.08);border:1px solid rgba(180,120,0,.3);border-radius:8px;padding:6px 10px;font-size:12px;min-width:160px;max-width:260px;gap:2px;cursor:grab',
+              ondragstart:e=>{e.dataTransfer.setData('glId',gs2);e.dataTransfer.effectAllowed='link';chip2.style.opacity='.4';},
+              ondragend:()=>{chip2.style.opacity='1';}});
+            const tr2=el('div',{style:'display:flex;align-items:center;gap:6px;flex-wrap:wrap'});
+            tr2.append(el('span',{style:'color:var(--ink-3);font-size:10px'},'⠿'),
+              el('span',{class:'mono',style:'font-weight:700;color:var(--amber);font-size:13px'},fmt(g.amount,false)),
+              el('span',{style:'color:var(--ink-1);font-weight:500'},g.vendor?g.vendor.slice(0,22):''));
+            if(g.date)tr2.append(el('span',{style:'color:var(--ink-3);font-size:11px;margin-left:auto'},g.date));
+            chip2.append(tr2);
+            if(g.remarks)chip2.append(el('div',{style:'font-size:11px;color:var(--ink-2);font-style:italic;border-top:1px solid rgba(180,120,0,.15);padding-top:4px;margin-top:2px'},'"'+g.remarks.slice(0,65)+(g.remarks.length>65?'…':'')+'"'));
+            cw.append(chip2);
+          });
+          lCol.append(cw);
+        }
+        lCol.append(el('button',{class:'btn sm',style:'font-size:11px;margin-top:4px',
+          onclick:async e=>{e.stopPropagation();
+            const nm=prompt('Name for this budget item:',grp.label.replace(/^SP\s*/i,'').slice(0,60));
+            if(!nm||!nm.trim())return;
+            const catStr=grp.key+(grp.label&&grp.label!==grp.key?' - '+grp.label.replace(/^SP\s*/i,'').slice(0,30):'');
+            const ni={id:uid('P'),property:code,category:catStr,name:nm.trim(),description:'',anticipatedCost:0,
+              steps:{},notes:localStorage.getItem(notesKey)||'',onHold:false,pinned:false,inHouse:false,isBudgetItem:true,dateAdded:today()};
+            await API.send('POST','/projects',ni);
+            for(const g of linesHere.filter(g=>!g.linkedProjectId)){g.linkedProjectId=ni.id;await linkGl(g,'Promoted · '+ni.name);}
+            await afterWrite('Added to budget: '+ni.name);
+          }},'+ Add to Budget'));
+        rCol.append(el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3);font-weight:700;margin-bottom:6px'},'📝 Notes'));
+        const nta=el('textarea',{style:'width:100%;min-height:80px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-size:12px;background:var(--panel);resize:vertical;box-sizing:border-box;line-height:1.5;color:var(--ink-1)',
+          placeholder:'Status, comments, follow-up…',
+          onblur:()=>localStorage.setItem(notesKey,nta.value)});
+        nta.value=localStorage.getItem(notesKey)||'';
+        rCol.append(nta);
+        layout2.append(lCol,rCol); detailCell2.append(layout2);
+      }
+      redrawUnbgd();
+      detailRow2.append(detailCell2);
+      tbody.append(mainRow,detailRow2);
     });
   }
 
