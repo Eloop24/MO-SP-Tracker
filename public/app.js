@@ -1579,7 +1579,7 @@ function viewProperty(){
     row('Spent vs SP budget', budget-(spent+cm.outstandingTotal),null,'budget less spent & committed'),
     cm.discussedTotal?row('Discussed / ideas', cm.discussedTotal,null,'not yet committed'):null,
   );
-  cashPanel.append(sl); left.append(cashPanel);
+  cashPanel.append(sl);
 
   const loanPanel=el('div',{class:'panel'});
   loanPanel.append(el('div',{class:'ph'}, el('h3',{},'Loan & valuation')));
@@ -1635,7 +1635,7 @@ function viewProperty(){
     pb.append(el('div',{class:'grp-h'}, ph.label, el('span',{class:'grp-n'},String(list.length))));
     list.forEach(pr=>pb.append(projRow(pr)));
   });
-  pj.append(pb); right.append(pj);
+  pj.append(pb);
 
   // reconciliation & flags
   const auditP=el('div',{class:'panel'});
@@ -1682,9 +1682,7 @@ function viewProperty(){
   gp.style.maxHeight='none';
   const budgetGlRow=el('div',{style:'display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start'});
   budgetGlRow.append(bp,gp);
-  right.append(budgetGlRow);
-
-  body.append(left,right);
+  body.append(cashPanel, pj, budgetGlRow);
   return {bar,body};
 }
 
@@ -1724,13 +1722,12 @@ function viewPropertyWVMO(){
      hstat('Cash / door',cpd==null?'—':fmt(cpd),cpdTone,p.units?`${p.units} units`:'no unit count'),
      hstat('Cash / yr of loan',cashPerYr==null?'—':fmt(cashPerYr),'none',loanYrs!=null&&loanYrs>0?`${loanYrs.toFixed(1)} yrs to ${c.loanDue}`:'no loan maturity')]);
 
-  const body=el('div',{class:'grid',style:'grid-template-columns:300px 1fr'});
+  const body=el('div',{class:'grid',style:'gap:16px'});
 
-  /* ── LEFT: cash position ─────────────────────────────── */
-  const left=el('div',{class:'grid',style:'gap:16px;align-content:start'});
+  /* ── CASH POSITION (top, full width) ─────────────────── */
   const cashPanel=el('div',{class:'panel'});
   cashPanel.append(el('div',{class:'ph'},el('h3',{},'Cash position'),el('div',{class:'sp'}),el('span',{class:'chip'},`snapshot ${c.asOfDate||S.meta.cashAsOf||'—'}`)));
-  const sl=el('div',{class:'pad stat-list'});
+  const sl=el('div',{class:'pad stat-list',style:'display:grid;grid-template-columns:1fr 1fr;gap:0 24px'});
   const row=(k,v,cls,sub)=>el('div',{class:'sl'+(cls?' '+cls:'')},el('span',{class:'k'},k,sub?el('span',{class:'sl-sub'},sub):null),el('span',{class:'v'+(typeof v==='number'&&v<0?' neg':'')},typeof v==='number'?fmt(v):v));
   const projCashRow=(()=>{
     const mini=(k,v,o={})=>el('div',{style:`display:flex;justify-content:space-between;gap:10px;padding:2px 0;font-size:12px;${o.strong?'font-weight:600;':'color:var(--ink-2);'}${o.indent?'padding-left:16px;':''}`},el('span',{},k),el('span',{class:'mono'+((typeof v==='number'&&v<0)?' neg':'')},typeof v==='number'?fmt(v):v));
@@ -1754,10 +1751,9 @@ function viewPropertyWVMO(){
     row('Spent vs SP budget',budget-(spent+cm.outstandingTotal),null,'budget less spent & committed'),
     cm.discussedTotal?row('Discussed / ideas',cm.discussedTotal,null,'not yet committed'):null,
   );
-  cashPanel.append(sl); left.append(cashPanel);
+  cashPanel.append(sl);
 
-  /* ── RIGHT: active projects + budget table + GL ─────── */
-  const right=el('div',{class:'grid',style:'gap:16px;align-content:start'});
+  /* ── ACTIVE PROJECTS + BUDGET TABLE + GL (full width) ─── */
   const allGls=S.gl.filter(g=>g.property===code);
   const budgetItems=projForProp(code).filter(p2=>!p2.inHouse);
 
@@ -1802,7 +1798,7 @@ function viewPropertyWVMO(){
     pb.append(el('div',{class:'grp-h'},ph.label,el('span',{class:'grp-n'},String(list.length))));
     list.forEach(pr=>pb.append(projRow2(pr)));
   });
-  pj.append(pb); right.append(pj);
+  pj.append(pb);
 
   /* ── SECTION 2: SP Budget Table ─────────────────── */
   const totalBudget=budgetItems.reduce((a,p2)=>a+(Number(p2.anticipatedCost)||0),0);
@@ -1974,9 +1970,7 @@ function viewPropertyWVMO(){
   gp.style.maxHeight='none';
   const budgetGlRow=el('div',{style:'display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start'});
   budgetGlRow.append(bp,gp);
-  right.append(budgetGlRow);
-
-  body.append(left,right);
+  body.append(cashPanel, pj, budgetGlRow);
   return {bar,body};
 }
 
