@@ -1682,141 +1682,303 @@ function viewProperty(){
 /* =========================================================
    PROPERTY DETAIL
 ========================================================= */
+/* =========================================================
+   WVMO — PILOT: active-projects + budget-tracker layout
+========================================================= */
 function viewPropertyWVMO(){
-  const code=VIEW.prop||S.properties[0].code;
+  const code='WVMO';
   const p=PROP(code); const c=S.cash[code]||{};
   const budget=Number(p.spBudget)||0;
   const glSpent=glSpentFor(code);
-  const cushSpent=c.spSpent!=null?Number(c.spSpent):null;
-  const spent=glSpent||cushSpent||0;
+  const spent=glSpent||(c.spSpent!=null?Number(c.spSpent):0);
   const remaining=budget-spent;
   const cm=cashModel(code);
-  const usedPct=budget?spent/budget:0;
   const cashToday=cm.cashToday;
   const cpd=p.units?cashToday/Number(p.units):null;
-  // years remaining on the loan, from the cash record's maturity date (MM/DD/YYYY)
   let loanYrs=null;
-  if(c.loanDue){ const m=String(c.loanDue).split('/'); if(m.length===3){ const due=new Date(+m[2],+m[0]-1,+m[1]); if(!isNaN(due)){ loanYrs=(due-new Date())/(1000*60*60*24*365.25); } } }
+  if(c.loanDue){const m=String(c.loanDue).split('/');if(m.length===3){const due=new Date(+m[2],+m[0]-1,+m[1]);if(!isNaN(due))loanYrs=(due-new Date())/(1000*60*60*24*365.25);}}
+  const remTone=remaining<0?'bad':(budget&&remaining<budget*0.15?'warn':'good');
+  const projTone=cm.projectedCash<0?'bad':(cm.projectedCash<cashToday*0.25?'warn':'good');
+  const cpdTone=cpd==null?'none':(cpd>=3000?'good':(cpd>=2000?'warn':'bad'));
   const cashPerYr=(loanYrs!=null&&loanYrs>0)?cashToday/loanYrs:null;
-  // conditional formatting
-  const remTone = remaining<0?'bad':(budget&&remaining<budget*0.15?'warn':'good');
-  const cpdTone = cpd==null?'none':(cpd>=3000?'good':(cpd>=2000?'warn':'bad'));   // green >$3k · yellow $2k–$3k · red <$2k
-  const projTone = cm.projectedCash<0?'bad':(cm.projectedCash<cashToday*0.25?'warn':'good');
-  const bar=propHead(p,
-    [ el('button',{class:'btn',onclick:()=>{VIEW.tab='cash';render();}},'Adjust cash'),
-      el('button',{class:'btn accent',onclick:()=>{VIEW.prop=code;openProject(null);}},'+ New project') ],
-    [ hstat('Current cash', fmt(cashToday), 'none', c.asOfDate?('as of '+c.asOfDate):'snapshot + adj'),
-      hstat('SP budget (2026)', fmt(budget), 'none'),
-      hstat('Spent to date', fmt(spent), 'none', 'posted per GL'),
-      hstat('Remaining', fmt(remaining), remTone, pct(usedPct)+' used'),
-      hstat('Projected cash', fmt(cm.projectedCash), projTone, 'after committed'),
-      hstat('Cash / door', cpd==null?'—':fmt(cpd), cpdTone, p.units?`${p.units} units`:'no unit count'),
-      hstat('Cash / yr of loan', cashPerYr==null?'—':fmt(cashPerYr), 'none', loanYrs!=null&&loanYrs>0?`${loanYrs.toFixed(1)} yrs to ${c.loanDue}`:'no loan maturity') ]);
-  const body=el('div',{class:'grid',style:'grid-template-columns:320px 1fr'});
 
-  // LEFT: cash + loan
+  const bar=propHead(p,
+    [el('button',{class:'btn',onclick:()=>{VIEW.tab='cash';render();}},'Adjust cash'),
+     el('button',{class:'btn accent',onclick:()=>{VIEW.prop=code;openProject(null);}},'+ New project')],
+    [hstat('Current cash',fmt(cashToday),'none',c.asOfDate?('as of '+c.asOfDate):'snapshot + adj'),
+     hstat('SP budget (2026)',fmt(budget),'none'),
+     hstat('Spent to date',fmt(spent),'none','posted per GL'),
+     hstat('Remaining',fmt(remaining),remTone,pct(budget?spent/budget:0)+' used'),
+     hstat('Projected cash',fmt(cm.projectedCash),projTone,'after committed'),
+     hstat('Cash / door',cpd==null?'—':fmt(cpd),cpdTone,p.units?`${p.units} units`:'no unit count'),
+     hstat('Cash / yr of loan',cashPerYr==null?'—':fmt(cashPerYr),'none',loanYrs!=null&&loanYrs>0?`${loanYrs.toFixed(1)} yrs to ${c.loanDue}`:'no loan maturity')]);
+
+  const body=el('div',{class:'grid',style:'grid-template-columns:300px 1fr'});
+
+  /* ── LEFT: cash position ─────────────────────────────── */
   const left=el('div',{class:'grid',style:'gap:16px;align-content:start'});
   const cashPanel=el('div',{class:'panel'});
-  cashPanel.append(el('div',{class:'ph'}, el('h3',{},'Cash position'), el('div',{class:'sp'}), el('span',{class:'chip'},`snapshot ${c.asOfDate||S.meta.cashAsOf||'—'}`)));
+  cashPanel.append(el('div',{class:'ph'},el('h3',{},'Cash position'),el('div',{class:'sp'}),el('span',{class:'chip'},`snapshot ${c.asOfDate||S.meta.cashAsOf||'—'}`)));
   const sl=el('div',{class:'pad stat-list'});
-  const row=(k,v,cls,sub)=>el('div',{class:'sl'+(cls?' '+cls:'')}, el('span',{class:'k'},k,sub?el('span',{class:'sl-sub'},sub):null), el('span',{class:'v'+(typeof v==='number'&&v<0?' neg':'')},typeof v==='number'?fmt(v):v));
-  // Projected cash with an expandable, line-by-line breakdown by status.
+  const row=(k,v,cls,sub)=>el('div',{class:'sl'+(cls?' '+cls:'')},el('span',{class:'k'},k,sub?el('span',{class:'sl-sub'},sub):null),el('span',{class:'v'+(typeof v==='number'&&v<0?' neg':'')},typeof v==='number'?fmt(v):v));
   const projCashRow=(()=>{
-    const mini=(k,v,o={})=>el('div',{style:`display:flex;justify-content:space-between;gap:10px;padding:2px 0;font-size:12px;${o.strong?'font-weight:600;':'color:var(--ink-2);'}${o.indent?'padding-left:16px;':''}`},
-      el('span',{},k), el('span',{class:'mono'+((typeof v==='number'&&v<0)?' neg':'')}, typeof v==='number'?fmt(v):v));
+    const mini=(k,v,o={})=>el('div',{style:`display:flex;justify-content:space-between;gap:10px;padding:2px 0;font-size:12px;${o.strong?'font-weight:600;':'color:var(--ink-2);'}${o.indent?'padding-left:16px;':''}`},el('span',{},k),el('span',{class:'mono'+((typeof v==='number'&&v<0)?' neg':'')},typeof v==='number'?fmt(v):v));
     const grp=t=>el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);margin:8px 0 2px'},t);
     const bd=el('div',{style:'padding:8px 0 2px;border-top:1px dashed var(--line-2);margin-top:6px'});
     bd.append(mini('Cash today',cm.cashToday,{strong:true}));
-    if(cm.outstanding.length){
-      bd.append(grp('Less — outstanding (approved, not yet paid)'));
-      cm.outstanding.forEach(p=>bd.append(mini('− '+(p.name||'(untitled)'), -(p.inHouse?ihRemaining(p):projOutflow(p)), {indent:true})));
-      bd.append(mini('Subtotal outstanding', -cm.outstandingTotal, {strong:true,indent:true}));
-    } else { bd.append(mini('Less — outstanding', 0, {indent:true})); }
-    bd.append(mini('= Projected cash', cm.projectedCash, {strong:true}));
-    if(cm.paid.length){
-      bd.append(grp('For reference — paid (already out)'));
-      cm.paid.forEach(p=>bd.append(mini(p.name||'(untitled)', (p.inHouse?ihDone(p):projOutflow(p)), {indent:true})));
-    }
-    if(cm.discussed.length){
-      bd.append(grp('For reference — discussed (not committed)'));
-      cm.discussed.forEach(p=>bd.append(mini(p.name||'(untitled)', projOutflow(p), {indent:true})));
-    }
+    if(cm.outstanding.length){bd.append(grp('Less — outstanding'));cm.outstanding.forEach(p2=>bd.append(mini('− '+(p2.name||'(untitled)'),-(p2.inHouse?ihRemaining(p2):projOutflow(p2)),{indent:true})));bd.append(mini('Subtotal outstanding',-cm.outstandingTotal,{strong:true,indent:true}));}else{bd.append(mini('Less — outstanding',0,{indent:true}));}
+    bd.append(mini('= Projected cash',cm.projectedCash,{strong:true}));
+    if(cm.paid.length){bd.append(grp('Paid (already out)'));cm.paid.forEach(p2=>bd.append(mini(p2.name||'(untitled)',p2.inHouse?ihDone(p2):projOutflow(p2),{indent:true})));}
+    if(cm.discussed.length){bd.append(grp('Discussed (not committed)'));cm.discussed.forEach(p2=>bd.append(mini(p2.name||'(untitled)',projOutflow(p2),{indent:true})));}
     const d=el('details',{});
-    d.append(el('summary',{class:'sl',style:'cursor:pointer;align-items:flex-start'},
-      el('span',{class:'k'},'Projected cash', el('span',{class:'sl-sub'},'once open work is paid · show math')),
-      el('span',{class:'v'+(cm.projectedCash<0?' neg':'')}, fmt(cm.projectedCash))), bd);
+    d.append(el('summary',{class:'sl',style:'cursor:pointer;align-items:flex-start'},el('span',{class:'k'},'Projected cash',el('span',{class:'sl-sub'},'once open work is paid · show math')),el('span',{class:'v'+(cm.projectedCash<0?' neg':'')},fmt(cm.projectedCash))),bd);
     return d;
   })();
   sl.append(
-    row('Cash snapshot', cm.snapshot==null?'—':cm.snapshot,null,'from cushion report'),
-    row('Mid-month adjustments', cm.adj),
-    row('Cash today', cm.cashToday,'hl','final · actual'),
-    row('Outstanding commitments', cm.outstandingTotal?-cm.outstandingTotal:0,null,'approved, not yet paid'),
+    row('Cash snapshot',cm.snapshot==null?'—':cm.snapshot,null,'from cushion report'),
+    row('Mid-month adjustments',cm.adj),
+    row('Cash today',cm.cashToday,'hl','final · actual'),
+    row('Outstanding commitments',cm.outstandingTotal?-cm.outstandingTotal:0,null,'approved, not yet paid'),
     projCashRow,
-    row('Spent vs SP budget', budget-(spent+cm.outstandingTotal),null,'budget less spent & committed'),
-    cm.discussedTotal?row('Discussed / ideas', cm.discussedTotal,null,'not yet committed'):null,
+    row('Spent vs SP budget',budget-(spent+cm.outstandingTotal),null,'budget less spent & committed'),
+    cm.discussedTotal?row('Discussed / ideas',cm.discussedTotal,null,'not yet committed'):null,
   );
   cashPanel.append(sl); left.append(cashPanel);
 
-
-
-  // RIGHT: budget tracker (primary) + draggable GL table
+  /* ── RIGHT: active projects + budget table + GL ─────── */
   const right=el('div',{class:'grid',style:'gap:16px;align-content:start'});
+  const allGls=S.gl.filter(g=>g.property===code);
+  const budgetItems=projForProp(code).filter(p2=>!p2.inHouse);
 
-  // GL table with draggable rows — rendered first so budget tracker can reference gls
-  const gls=S.gl.filter(g=>g.property===code);
-  const gp=el('div',{class:'panel',style:'overflow:auto'});
-  gp.append(el('div',{class:'ph'},
-    el('h3',{},'General ledger'),
+  /* helper: GL lines linked to a project */
+  const linkedFor=pr=>allGls.filter(g=>g.linkedProjectId===pr.id);
+  const glSum=pr=>linkedFor(pr).reduce((a,g)=>a+(Number(g.amount)||0),0);
+  const effectiveSpent=pr=>pr.actualCost!=null?Number(pr.actualCost):glSum(pr);
+
+  /* ── SECTION 1: Active Projects ──────────────────── */
+  const projs=projForProp(code).filter(p2=>inDateRange(p2,PFILT));
+  const pj=el('div',{class:'panel'});
+  const counts={}; PHASES.forEach(ph=>counts[ph.key]=projs.filter(p2=>phase(p2)===ph.key).length);
+  pj.append(el('div',{class:'ph'},el('h3',{},'Active Projects'),el('div',{class:'sp'}),el('span',{class:'chip'},`${projs.length} total`),
+    el('button',{class:'btn ghost sm',style:'margin-left:4px',onclick:()=>{VIEW.prop=code;openProject(null);}},'+ Add')));
+  const filt=el('div',{class:'phasefilt'});
+  PHASES.forEach(ph=>{if(!counts[ph.key])return;const hidden=!!PFILT.hide[ph.key];
+    filt.append(el('button',{class:'pf-chip'+(hidden?' off':''),title:hidden?'Show':'Hide',onclick:()=>{PFILT.hide[ph.key]=!PFILT.hide[ph.key];render();}},el('span',{},ph.label),el('span',{class:'pf-n'},String(counts[ph.key]))));});
+  pj.append(el('div',{class:'pad',style:'padding-bottom:8px'},dateFilterGroup(PFILT),el('div',{style:'height:9px'}),filt));
+  const pb=el('div',{style:'max-height:340px;overflow:auto'});
+  if(!projs.length)pb.append(el('div',{class:'empty'},'No projects yet.'));
+  function projRow2(pr){
+    const ih=isInHouse(pr);
+    const r=el('div',{class:'clickrow proj-row',style:'padding:10px 16px;border-bottom:1px solid var(--line-2)',onclick:()=>openProject(pr.id)});
+    r.append(
+      el('div',{style:'display:flex;gap:8px;align-items:center;margin-bottom:5px'},
+        el('button',{class:'pinbtn'+(pr.pinned?' on':''),onclick:e=>{e.stopPropagation();pr.pinned=!pr.pinned;saveProject(pr,pr.pinned?'Pinned':'Unpinned');}},'📌'),
+        el('strong',{style:'font-size:13px;flex:1;min-width:0'},pr.name),
+        ih?el('span',{class:'chip ih'},'In-house'):null,
+        el('span',{style:'font-size:11px;color:var(--ink-3)'},pr.category),
+        el('span',{class:'mono',style:'font-size:12px;font-weight:600'},fmt(ih?ihTotal(pr):(pr.actualCost!=null?pr.actualCost:pr.anticipatedCost),false))),
+      ih?progressEl(pr):trackEl(pr));
+    return r;
+  }
+  const pinned2=projs.filter(p2=>p2.pinned&&!PFILT.hide[phase(p2)]);
+  if(pinned2.length){pb.append(el('div',{class:'grp-h pinned'},'📌 Pinned',el('span',{class:'grp-n'},String(pinned2.length))));pinned2.forEach(pr=>pb.append(projRow2(pr)));}
+  PHASES.forEach(ph=>{
+    if(PFILT.hide[ph.key])return;
+    const list=projs.filter(p2=>phase(p2)===ph.key&&!p2.pinned);
+    if(!list.length)return;
+    list.sort((a,b)=>(stage(b)-stage(a))||(b.dateAdded||'').localeCompare(a.dateAdded||''));
+    pb.append(el('div',{class:'grp-h'},ph.label,el('span',{class:'grp-n'},String(list.length))));
+    list.forEach(pr=>pb.append(projRow2(pr)));
+  });
+  pj.append(pb); right.append(pj);
+
+  /* ── SECTION 2: SP Budget Table ─────────────────── */
+  const totalBudget=budgetItems.reduce((a,p2)=>a+(Number(p2.anticipatedCost)||0),0);
+  const totalSpent =budgetItems.reduce((a,p2)=>a+effectiveSpent(p2),0);
+  const totalVar   =totalSpent-totalBudget;
+  const varColor   =totalVar>500?'var(--rust)':totalVar<-500?'var(--green)':'var(--ink)';
+
+  const bp=el('div',{class:'panel',style:'overflow:visible'});
+  bp.append(el('div',{class:'ph'},
+    el('h3',{},'2026 SP Budget'),
     el('div',{class:'sp'}),
-    el('span',{class:'chip'},`${gls.length} lines`),
+    el('span',{class:'chip'},`${budgetItems.length} items`),
+    allGls.length?el('span',{class:'chip'},'GL · '+allGls.length+' lines'):null));
+  /* summary strip */
+  const strip=el('div',{style:'display:flex;border-bottom:1px solid var(--line-2)'});
+  const kk=(lbl,val,color)=>{const d=el('div',{style:'flex:1;padding:10px 16px;text-align:center;border-right:1px solid var(--line-2)'});d.append(el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600'},lbl));d.append(el('div',{class:'mono',style:'font-size:16px;font-weight:700;margin-top:2px'+(color?';color:'+color:'')},fmt(val)));return d;};
+  const varStrip=el('div',{style:'flex:1;padding:10px 16px;text-align:center'});
+  varStrip.append(el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600'},'Variance'));
+  varStrip.append(el('div',{class:'mono',style:`font-size:16px;font-weight:700;margin-top:2px;color:${varColor}`},(totalVar>=0?'+':'')+fmt(totalVar,false)));
+  varStrip.append(el('div',{style:'font-size:11px;color:var(--ink-3);margin-top:1px'},totalVar<-100?fmt(Math.abs(totalVar),false)+' available':totalVar>100?'over budget':'on budget'));
+  strip.append(kk('Total Budget',totalBudget),kk('Total GL Spent',totalSpent),varStrip);
+  bp.append(strip);
+
+  /* table header */
+  const tbl=el('table',{style:'width:100%;border-collapse:collapse;font-size:13px'});
+  tbl.append(el('thead',{},el('tr',{style:'background:var(--panel-2);border-bottom:1px solid var(--line)'},
+    el('th',{style:'padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600;width:180px'},'Account'),
+    el('th',{style:'padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600'},'Description'),
+    el('th',{style:'padding:8px 16px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600;white-space:nowrap'},'Budget'),
+    el('th',{style:'padding:8px 16px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600;white-space:nowrap'},'GL Spent'),
+    el('th',{style:'padding:8px 16px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600'},'Variance'))));
+  const tbody=el('tbody');
+
+  const sorted=[...budgetItems].sort((a,b)=>(a.category||'').localeCompare(b.category||'')||((Number(b.anticipatedCost)||0)-(Number(a.anticipatedCost)||0)));
+  sorted.forEach(pr=>{
+    const bdg=Number(pr.anticipatedCost)||0;
+    const sp=effectiveSpent(pr);
+    const vr=sp-bdg;
+    const vrColor=bdg?(vr>0?'var(--rust)':'var(--green)'):'var(--ink-3)';
+    const lgs=linkedFor(pr);
+    const isOver=bdg>0&&sp>bdg;
+    const barColor=isOver?'var(--rust)':bdg>0&&sp/bdg>=0.75?'var(--amber)':'var(--green)';
+    const pct2=bdg?Math.min(sp/bdg,1):0;
+
+    /* main row */
+    const mainRow=el('tr',{
+      style:'border-bottom:1px solid var(--line-2);cursor:pointer',
+      ondragover:e=>{e.preventDefault();mainRow.style.background='var(--wheat-soft)';},
+      ondragleave:()=>{mainRow.style.background='';},
+      ondrop:async e=>{e.preventDefault();mainRow.style.background='';const gid=e.dataTransfer.getData('glId');if(!gid)return;const g=S.gl.find(x=>x.id===gid||String(x.id)===gid);if(!g){toast('GL line not found');return;}g.linkedProjectId=pr.id;await linkGl(g,'GL assigned · '+pr.name);}
+    });
+
+    /* mini bar inside Description cell */
+    const barEl=el('div',{style:`height:4px;border-radius:3px;background:var(--line);margin-top:5px;overflow:hidden`});
+    barEl.append(el('div',{style:`width:${Math.round(pct2*100)}%;height:100%;background:${barColor};border-radius:3px`}));
+
+    /* toggle row visibility */
+    let expanded=false;
+    const toggle=()=>{expanded=!expanded;detailRow.style.display=expanded?'':'none';toggleBtn.textContent=expanded?'▲':'▼';};
+    const toggleBtn=el('button',{class:'btn ghost sm',style:'padding:2px 6px;font-size:11px',onclick:e=>{e.stopPropagation();toggle();}},lgs.length?`▼ ${lgs.length} charged`:'▼');
+
+    mainRow.append(
+      el('td',{style:'padding:10px 12px;vertical-align:middle'},
+        el('div',{style:'font-size:11.5px;color:var(--ink-2);line-height:1.3'},pr.category||'—')),
+      el('td',{style:'padding:10px 12px;vertical-align:middle'},
+        el('div',{style:'display:flex;gap:8px;align-items:center'},
+          el('span',{style:'font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline dotted',onclick:()=>openProject(pr.id)},pr.name||'(untitled)'),
+          toggleBtn),
+        barEl,
+        pr.notes?el('div',{style:'font-size:11px;color:var(--ink-3);margin-top:3px'},pr.notes.slice(0,80)+(pr.notes.length>80?'…':'')):null),
+      el('td',{style:'padding:10px 16px;text-align:right;font-family:var(--mono);font-weight:700'},bdg?fmt(bdg):'—'),
+      el('td',{style:'padding:10px 16px;text-align:right;font-family:var(--mono);font-weight:700'},sp?fmt(sp):'—'),
+      el('td',{style:`padding:10px 16px;text-align:right;font-family:var(--mono);font-weight:700;color:${vrColor}`},bdg?(vr>=0?'+':'')+fmt(vr,false):'—'));
+    tbody.append(mainRow);
+
+    /* detail row (GL charges + drop zone) */
+    const detailRow=el('tr',{style:'display:none;background:var(--panel-2);border-bottom:2px solid var(--line)'});
+    const detailCell=el('td',{colspan:'5',style:'padding:10px 16px'});
+
+    function redrawDetail(){
+      detailCell.innerHTML='';
+      const lgs2=linkedFor(pr);
+      /* assigned GL chips */
+      if(lgs2.length){
+        const chipWrap=el('div',{style:'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px'});
+        lgs2.forEach(g=>{
+          const chip=el('div',{style:'display:inline-flex;align-items:center;gap:6px;background:var(--green-soft);border:1px solid var(--green);border-radius:6px;padding:4px 10px;font-size:12px'});
+          chip.append(
+            el('span',{class:'mono',style:'font-weight:600'},fmt(g.amount,false)),
+            el('span',{style:'color:var(--ink-2)'},g.vendor?(' · '+g.vendor.slice(0,24)):''),
+            g.date?el('span',{style:'color:var(--ink-3)'},' · '+g.date):'');
+          /* Move button */
+          const moveBtn=el('button',{class:'btn ghost sm',style:'padding:2px 6px;font-size:11px',onclick:e=>{e.stopPropagation();showMoveMenu(g,chip,pr,redrawDetail);}
+          },'Move ▾');
+          chip.append(moveBtn);
+          /* Unlink */
+          chip.append(el('button',{class:'btn ghost sm',style:'padding:0 5px;font-size:12px;color:var(--rust)',onclick:async()=>{g.linkedProjectId=null;await linkGl(g,'GL unlinked');redrawDetail();toggleBtn.textContent=lgs.length?`▼ ${lgs.length} charged`:'▼';}},'✕'));
+          chipWrap.append(chip);
+        });
+        detailCell.append(chipWrap);
+      }
+      /* drop zone */
+      const dz=el('div',{
+        style:'border:2px dashed var(--line);border-radius:6px;padding:8px 14px;font-size:12px;color:var(--ink-3);text-align:center;transition:background .15s,border-color .15s',
+        ondragover:e=>{e.preventDefault();dz.style.background='var(--wheat-soft)';dz.style.borderColor='var(--wheat)';},
+        ondragleave:()=>{dz.style.background='';dz.style.borderColor='var(--line)';},
+        ondrop:async e=>{e.preventDefault();dz.style.background='';dz.style.borderColor='var(--line)';const gid=e.dataTransfer.getData('glId');if(!gid)return;const g=S.gl.find(x=>x.id===gid||String(x.id)===gid);if(!g){toast('GL line not found');return;}g.linkedProjectId=pr.id;await linkGl(g,'GL assigned · '+pr.name);}
+      },'↓ Drop GL lines here to assign spend');
+      detailCell.append(dz);
+    }
+    redrawDetail();
+    detailRow.append(detailCell);
+    tbody.append(detailRow);
+  });
+
+  /* totals footer */
+  const tfoot=el('tfoot',{});
+  tfoot.append(el('tr',{style:'background:var(--panel-2);border-top:2px solid var(--line);font-weight:700'},
+    el('td',{colspan:'2',style:'padding:10px 16px;font-size:13px'},'Total'),
+    el('td',{style:'padding:10px 16px;text-align:right;font-family:var(--mono)'},fmt(totalBudget)),
+    el('td',{style:'padding:10px 16px;text-align:right;font-family:var(--mono)'},totalSpent?fmt(totalSpent):'—'),
+    el('td',{style:`padding:10px 16px;text-align:right;font-family:var(--mono);color:${varColor}`},(totalVar>=0?'+':'')+fmt(totalVar,false))));
+  tbl.append(tbody,tfoot); bp.append(tbl);
+  right.append(bp);
+
+  /* ── SECTION 3: GL lines (draggable) ─────────────── */
+  const gp=el('div',{class:'panel',style:'overflow:auto'});
+  const unassigned=allGls.filter(g=>!g.linkedProjectId&&Number(g.amount)>0);
+  gp.append(el('div',{class:'ph'},
+    el('h3',{},'General Ledger'),el('div',{class:'sp'}),
+    el('span',{class:'chip'},`${allGls.length} lines`),
     el('span',{class:'chip'},fmt(glSpent)),
-    gls.some(g=>!g.linkedProjectId&&Number(g.amount)>0)?
-      el('span',{class:'chip hold'},gls.filter(g=>!g.linkedProjectId&&Number(g.amount)>0).length+' unassigned')
-    :el('span',{class:'chip done'},'all assigned')));
-  if(gls.length){
-    const hint=el('div',{style:'padding:6px 16px;font-size:11.5px;color:var(--ink-3);border-bottom:1px solid var(--line-2);background:var(--panel-2)'},
-      '⠿  Drag any row onto a budget item above to assign GL spend');
-    gp.append(hint);
+    unassigned.length?el('span',{class:'chip hold'},unassigned.length+' unassigned'):el('span',{class:'chip done'},'all assigned')));
+  if(allGls.length){
+    gp.append(el('div',{style:'padding:6px 16px;font-size:11.5px;color:var(--ink-3);border-bottom:1px solid var(--line-2);background:var(--panel-2)'},'⠿  Drag rows onto a budget item above, or drop directly on a row'));
     const t=el('table',{class:'tbl'});
-    t.append(el('thead',{},tr(th(''),th('Date'),th('Category'),th('Vendor / description'),th('Amount','r'),th('Assigned to'))));
+    t.append(el('thead',{},tr(th(''),th('Date'),th('Account'),th('Vendor / description'),th('Amount','r'),th('Assigned to'))));
     const tbb=el('tbody');
-    gls.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-    gls.forEach(g=>{
+    allGls.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    allGls.forEach(g=>{
       const linked=g.linkedProjectId?S.projects.find(x=>x.id===g.linkedProjectId):null;
       const glRow=el('tr',{
         draggable:'true',
-        style:'cursor:grab;'+(linked?'opacity:.65':''),
-        ondragstart:e=>{e.dataTransfer.setData('glId',String(g.id));e.dataTransfer.effectAllowed='link';glRow.style.opacity='.4';},
-        ondragend:()=>{glRow.style.opacity=linked?'.65':'1';}
+        style:'cursor:grab'+(linked?';opacity:.6':''),
+        ondragstart:e=>{e.dataTransfer.setData('glId',String(g.id));e.dataTransfer.effectAllowed='link';glRow.style.opacity='.35';},
+        ondragend:()=>{glRow.style.opacity=linked?'.6':'1';}
       });
       glRow.append(
-        td(el('span',{style:'font-size:14px;color:var(--ink-3);cursor:grab;user-select:none'},'⠿')),
+        td(el('span',{style:'font-size:14px;color:var(--ink-3);user-select:none'},'⠿')),
         td(el('span',{class:'mono',style:'font-size:12px'},g.date||'—')),
-        td(el('span',{style:'font-size:12px'},g.category||'—')),
-        td(el('div',{style:'font-size:12px;max-width:220px'},
-          el('div',{},g.vendor||'—'),
-          g.remarks?el('div',{style:'color:var(--ink-3);font-size:11px'},g.remarks):null)),
+        td(el('span',{style:'font-size:11.5px;color:var(--ink-2)'},g.category||'—')),
+        td(el('div',{style:'font-size:12px;max-width:200px'},el('div',{},g.vendor||'—'),g.remarks?el('div',{style:'color:var(--ink-3);font-size:11px'},g.remarks):null)),
         tdn(g.amount,1),
         td(linked
-          ? el('span',{style:'font-size:11.5px;color:var(--green);display:flex;gap:4px;align-items:center'},
+          ?el('span',{style:'font-size:11.5px;color:var(--green);display:flex;gap:4px;align-items:center'},
               '🔗 '+linked.name.slice(0,20),
-              el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 4px',title:'Unlink',
-                onclick:async()=>{g.linkedProjectId=null;await linkGl(g,'GL unlinked');}
-              },'✕'))
-          : el('span',{style:'font-size:11px;color:var(--ink-3);font-style:italic'},'—')));
+              el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 4px',onclick:async()=>{g.linkedProjectId=null;await linkGl(g,'GL unlinked');}},'✕'))
+          :el('span',{style:'font-size:11px;color:var(--ink-3);font-style:italic'},'unassigned')));
       tbb.append(glRow);
     });
     t.append(tbb); gp.append(t);
-  } else gp.append(el('div',{class:'empty'},'No ledger lines. Upload a GL on the Data tab.'));
-
-  // budget tracker — the main panel
-  right.append(budgetTracker(code));
+  } else gp.append(el('div',{class:'empty'},'No GL lines. Upload a general ledger on the Data tab.'));
   right.append(gp);
 
   body.append(left,right);
   return {bar,body};
 }
+
+/* small floating "Move to…" menu */
+function showMoveMenu(g, anchor, currentPr, onDone){
+  const existing=document.getElementById('_moveMenu'); if(existing)existing.remove();
+  const items=projForProp('WVMO').filter(p2=>!p2.inHouse&&p2.id!==currentPr.id);
+  if(!items.length){toast('No other budget items to move to');return;}
+  const rect=anchor.getBoundingClientRect();
+  const menu=el('div',{id:'_moveMenu',style:`position:fixed;z-index:9999;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);min-width:200px;top:${rect.bottom+4}px;left:${rect.left}px;overflow:hidden`});
+  const close=()=>menu.remove();
+  menu.append(el('div',{style:'padding:7px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3);font-weight:600;border-bottom:1px solid var(--line-2)'},'Move to…'));
+  items.sort((a,b)=>(a.name||'').localeCompare(b.name||'')).forEach(pr=>{
+    menu.append(el('button',{class:'btn ghost',style:'width:100%;text-align:left;border-radius:0;border:0;border-bottom:1px solid var(--line-2);padding:8px 14px;font-size:13px',
+      onclick:async()=>{close();g.linkedProjectId=pr.id;await linkGl(g,'GL moved · '+pr.name);onDone&&onDone();}
+    },pr.name));
+  });
+  document.body.append(menu);
+  const dismiss=e=>{if(!menu.contains(e.target)){close();document.removeEventListener('click',dismiss);}};
+  setTimeout(()=>document.addEventListener('click',dismiss),0);
+}
+
+
 /* GL link cell: shows the linked project or a Match button with a best-guess hint. */
 
 function glLinkCell(g,code){

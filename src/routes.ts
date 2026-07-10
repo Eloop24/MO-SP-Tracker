@@ -389,12 +389,22 @@ api.post('/import/gl/confirm', async (req, res) => {
   if (!p || p.kind !== 'gl') return res.status(400).json({ error: 'preview expired — re-upload' });
   const { tx: lines, period } = p.data;
   await tx(async (c) => {
+    // Preserve existing GL assignments (control# → project) so monthly re-upload
+    // does not wipe manually dragged assignments.
+    const saved = await c.query(
+      `select control, linked_project_id from gl_lines
+       where control is not null and control <> '' and linked_project_id is not null`
+    );
+    const assignments: Record<string,string> = {};
+    for (const r of saved.rows) assignments[r.control] = r.linked_project_id;
+
     await c.query('truncate gl_lines');
     for (const g of lines) {
+      const lp = (g.control && assignments[g.control]) ? assignments[g.control] : null;
       await c.query(
         `insert into gl_lines(id,property_code,account,category,date,vendor,control,amount,remarks,linked_project_id,partial)
-         values($1,$2,$3,$4,$5,$6,$7,$8,$9,null,false)`,
-        [g.id, g.property, g.account || null, g.category || null, dnull(g.date), g.vendor || null, g.control || null, Number(g.amount) || 0, g.remarks || null]
+         values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,false)`,
+        [g.id, g.property, g.account || null, g.category || null, dnull(g.date), g.vendor || null, g.control || null, Number(g.amount) || 0, g.remarks || null, lp]
       );
     }
     if (period) await c.query('update app_meta set gl_period=$1 where id=1', [period]);
