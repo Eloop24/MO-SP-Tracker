@@ -2127,9 +2127,13 @@ function viewPropertyBudgetTracker(code){
         leftCol.append(secLabel);
         const chipWrap=el('div',{style:'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px'});
         lgs2.forEach(g=>{
-          const chip=el('div',{style:'display:flex;flex-direction:column;background:var(--green-soft);border:1px solid rgba(46,125,87,.3);border-radius:8px;padding:6px 10px;font-size:12px;min-width:160px;max-width:260px;gap:2px'});
+          const gidStr2=String(g.id);
+          const chip=el('div',{draggable:'true',title:'Drag to reassign to another budget item',style:'display:flex;flex-direction:column;background:var(--green-soft);border:1px solid rgba(46,125,87,.3);border-radius:8px;padding:6px 10px;font-size:12px;min-width:160px;max-width:260px;gap:2px;cursor:grab',
+            ondragstart:e=>{e.dataTransfer.setData('glId',gidStr2);e.dataTransfer.effectAllowed='link';chip.style.opacity='.4';chip.style.cursor='grabbing';},
+            ondragend:()=>{chip.style.opacity='1';chip.style.cursor='grab';}});
           const topRow=el('div',{style:'display:flex;align-items:center;gap:6px;flex-wrap:wrap'});
           topRow.append(
+            el('span',{style:'color:var(--ink-3);font-size:10px;cursor:grab',title:'Drag to move'},'⠿'),
             el('span',{class:'mono',style:'font-weight:700;color:var(--green);font-size:13px'},fmt(g.amount,false)),
             el('span',{style:'color:var(--ink-1);font-weight:500'},g.vendor?g.vendor.slice(0,22):''));
           if(g.date)topRow.append(el('span',{style:'color:var(--ink-3);font-size:11px;margin-left:auto'},g.date));
@@ -2149,7 +2153,7 @@ function viewPropertyBudgetTracker(code){
         style:'border:2px dashed var(--line);border-radius:8px;padding:10px 16px;font-size:12px;color:var(--ink-3);text-align:center;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:6px',
         ondragover:e=>{if(!_draggingBudgetId){e.preventDefault();dz.style.background='var(--wheat-soft)';dz.style.borderColor='var(--wheat)';dz.style.color='var(--wheat)';}},
         ondragleave:()=>{dz.style.background='';dz.style.borderColor='var(--line)';dz.style.color='var(--ink-3)';},
-        ondrop:async e=>{e.preventDefault();dz.style.background='';dz.style.borderColor='var(--line)';dz.style.color='var(--ink-3)';const gid=e.dataTransfer.getData('glId');if(!gid)return;const g=S.gl.find(x=>x.id===gid||String(x.id)===gid);if(!g){toast('GL line not found');return;}g.linkedProjectId=pr.id;await linkGl(g,'GL assigned · '+pr.name);}
+        ondrop:async e=>{e.preventDefault();dz.style.background='';dz.style.borderColor='var(--line)';dz.style.color='var(--ink-3)';const gid=e.dataTransfer.getData('glId');if(!gid)return;const g=S.gl.find(x=>x.id===gid||String(x.id)===gid);if(!g){toast('GL line not found');return;}g.linkedProjectId=pr.id;await linkGl(g,'GL assigned · '+pr.name);redrawDetail();}
       },
         el('span',{style:'font-size:14px'},'⬇'),
         el('span',{},'Drop GL lines here to assign spend'));
@@ -2372,11 +2376,13 @@ function showMoveMenu(g, anchor, currentPr, onDone){
   const menu=el('div',{id:'_moveMenu',style:`position:fixed;z-index:9999;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);min-width:200px;top:${rect.bottom+4}px;left:${rect.left}px;overflow:hidden`});
   const close=()=>menu.remove();
   menu.append(el('div',{style:'padding:7px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3);font-weight:600;border-bottom:1px solid var(--line-2)'},'Move to…'));
+  const scrollList=el('div',{style:'max-height:260px;overflow-y:auto'});
   items.sort((a,b)=>(a.name||'').localeCompare(b.name||'')).forEach(pr=>{
-    menu.append(el('button',{class:'btn ghost',style:'width:100%;text-align:left;border-radius:0;border:0;border-bottom:1px solid var(--line-2);padding:8px 14px;font-size:13px',
+    scrollList.append(el('button',{class:'btn ghost',style:'width:100%;text-align:left;border-radius:0;border:0;border-bottom:1px solid var(--line-2);padding:8px 14px;font-size:13px',
       onclick:async()=>{close();g.linkedProjectId=pr.id;await linkGl(g,'GL moved · '+pr.name);onDone&&onDone();}
     },pr.name));
   });
+  menu.append(scrollList);
   document.body.append(menu);
   const dismiss=e=>{if(!menu.contains(e.target)){close();document.removeEventListener('click',dismiss);}};
   setTimeout(()=>document.addEventListener('click',dismiss),0);
