@@ -1962,7 +1962,7 @@ function viewPropertyWVMO(){
     const sp=effectiveSpent(pr);
     const ct=contractedTotal(pr);
     const vr=sp+ct-bdg;  // negative = budget still available
-    const vrColor=bdg?(vr>0?'var(--rust)':'var(--green)'):'var(--ink-3)';
+    const vrColor=(bdg||sp||ct)?(vr>0?'var(--rust)':vr<0?'var(--green)':'var(--ink)'):'var(--ink-3)';
     const lgs=linkedFor(pr);
     const isOver=bdg>0&&sp>bdg;
     const barColor=isOver?'var(--rust)':bdg>0&&sp/bdg>=0.75?'var(--amber)':'var(--green)';
@@ -2024,7 +2024,7 @@ function viewPropertyWVMO(){
       el('td',{style:'padding:10px 16px;text-align:right;font-family:var(--mono);font-weight:700'},bdg?fmt(bdg):'—'),
       el('td',{style:'padding:10px 16px;text-align:right;font-family:var(--mono);font-weight:700'},sp?fmt(sp):'—'),
       el('td',{style:'padding:10px 16px;text-align:right;font-family:var(--mono);font-weight:700;color:var(--wheat)'},ct?fmt(ct):'—'),
-      el('td',{style:`padding:10px 16px;text-align:right;font-family:var(--mono);font-weight:700;color:${vrColor}`},bdg?(vr>=0?'+':'')+fmt(vr,false):'—'));
+      el('td',{style:`padding:10px 16px;text-align:right;font-family:var(--mono);font-weight:700;color:${vrColor}`},(bdg||sp||ct)?((vr>=0?'+':'')+fmt(vr,false)):'—'));
     tbody.append(mainRow);
 
     /* detail row (GL charges + drop zone) */
