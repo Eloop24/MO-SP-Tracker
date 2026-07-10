@@ -109,7 +109,7 @@ export async function assembleState(): Promise<AppState> {
     query('select * from progress_notes order by project_id, date'),
     query('select * from cash_snapshots'),
     query('select * from cash_adjustments order by date'),
-    query('select * from gl_lines where deleted = false order by id'),
+    query('select * from gl_lines order by id'),
     query('select * from app_meta where id=1'),
     query('select * from contracts order by effective_date, created_at'),
   ]);

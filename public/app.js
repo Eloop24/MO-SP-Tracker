@@ -1845,7 +1845,7 @@ function viewPropertyBudgetTracker(code){
   cashPanel.append(sl);
 
   /* ── ACTIVE PROJECTS + BUDGET TABLE + GL (full width) ─── */
-  const allGls=S.gl.filter(g=>g.property===code);
+  const allGls=S.gl.filter(g=>g.property===code&&!g.deleted);
   /* Identify budget line items: either flagged by migration 006 OR known by seed IDs from migration 005 */
   const WVMO_BUDGET_IDS=_BUDGET_IDS[code]||new Set();
   const isBudgetLine=p2=>p2.isBudgetItem||WVMO_BUDGET_IDS.has(p2.id);
@@ -2310,9 +2310,12 @@ function viewPropertyBudgetTracker(code){
   let glCollapsed=false;
   let glShowContra=false;
   let glShowIgnored=false;
-  const contraLines=allGls.filter(g=>Number(g.amount)<0&&!g.linkedProjectId&&!g.ignored&&!g.deleted);
-  const positiveGls=allGls.filter(g=>Number(g.amount)>=0&&!g.ignored&&!g.deleted);
-  const ignoredGls=allGls.filter(g=>g.ignored&&!g.deleted);
+  let glShowDeleted=false;
+  let glShowAll=false;
+  const contraLines=allGls.filter(g=>Number(g.amount)<0&&!g.linkedProjectId&&!g.ignored);
+  const positiveGls=allGls.filter(g=>Number(g.amount)>=0&&!g.ignored);
+  const ignoredGls=allGls.filter(g=>g.ignored);
+  const deletedGls=S.gl.filter(g=>g.property===code&&g.deleted);
   const glChecked=new Set(); // GL line IDs checked for batch match
   const glHeader=()=>{
     const checkedCount=glChecked.size;
@@ -2336,9 +2339,18 @@ function viewPropertyBudgetTracker(code){
         :null,
       ignoredGls.length?el('button',{class:'btn'+(glShowIgnored?' accent':' ghost')+' sm',style:'font-size:11px;color:var(--ink-3)',
           title:glShowIgnored?'Hide ignored lines':'Show '+ignoredGls.length+' ignored lines',
-          onclick:()=>{glShowIgnored=!glShowIgnored;glShowContra=false;glShowUnassignedOnly=false;rebuildGLTable();}},
+          onclick:()=>{glShowIgnored=!glShowIgnored;glShowContra=false;glShowUnassignedOnly=false;glShowDeleted=false;glShowAll=false;rebuildGLTable();}},
           ignoredGls.length+' ignored')
         :null,
+      deletedGls.length?el('button',{class:'btn'+(glShowDeleted?' accent':' ghost')+' sm',style:'font-size:11px;color:var(--rust)',
+          title:glShowDeleted?'Hide deleted lines':'Show '+deletedGls.length+' deleted lines (undo available)',
+          onclick:()=>{glShowDeleted=!glShowDeleted;glShowContra=false;glShowUnassignedOnly=false;glShowIgnored=false;glShowAll=false;rebuildGLTable();}},
+          deletedGls.length+' deleted')
+        :null,
+      el('button',{class:'btn'+(glShowAll?' accent':' ghost')+' sm',style:'font-size:11px',
+          title:glShowAll?'Back to normal view':'Show all GL lines including negatives and sweeps',
+          onclick:()=>{glShowAll=!glShowAll;glShowContra=false;glShowUnassignedOnly=false;glShowIgnored=false;glShowDeleted=false;rebuildGLTable();}},
+          'View all'),
       checkedCount
         ?el('button',{class:'btn accent sm',style:'margin-left:6px',
             onclick:async()=>{
@@ -2369,7 +2381,7 @@ function viewPropertyBudgetTracker(code){
     /* "select all unassigned" checkbox in header */
     const allCb=el('input',{type:'checkbox',title:'Select all unassigned',style:'cursor:pointer'});
     allCb.onchange=()=>{
-      const baseGls2=glShowIgnored?ignoredGls:glShowContra?contraLines:(glShowUnassignedOnly?unassigned:positiveGls);
+      const baseGls2=glShowDeleted?deletedGls:glShowAll?[...positiveGls,...contraLines].sort((a,b)=>(b.date||'').localeCompare(a.date||'')):glShowIgnored?ignoredGls:glShowContra?contraLines:(glShowUnassignedOnly?unassigned:positiveGls);
       const displayGls2=baseGls2;
       displayGls2.filter(g=>!g.linkedProjectId).forEach(g=>{
         if(allCb.checked)glChecked.add(String(g.id)); else glChecked.delete(String(g.id));
@@ -2378,7 +2390,7 @@ function viewPropertyBudgetTracker(code){
     };
     t.append(el('thead',{},tr(el('th',{style:'width:32px;padding:6px 8px'},allCb),th('Vendor / description'),th('Amount','r'),th('Assigned to'))));
     const tbb=el('tbody');
-    const baseGls=glShowIgnored?ignoredGls:glShowContra?contraLines:(glShowUnassignedOnly?unassigned:positiveGls);
+    const baseGls=glShowDeleted?deletedGls:glShowAll?[...positiveGls,...contraLines].sort((a,b)=>(b.date||'').localeCompare(a.date||'')):glShowIgnored?ignoredGls:glShowContra?contraLines:(glShowUnassignedOnly?unassigned:positiveGls);
     const displayGls=baseGls;
     displayGls.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
     displayGls.forEach(g=>{
@@ -2400,21 +2412,24 @@ function viewPropertyBudgetTracker(code){
           el('div',{style:'color:var(--ink-3);font-size:11px'},(g.date||'')+(g.category?' · '+g.category.slice(0,20):'')),
           g.remarks?el('div',{style:'font-size:11px;color:var(--ink-2);font-style:italic;border-left:2px solid var(--line);padding-left:5px;margin-top:3px'},'"'+g.remarks.slice(0,55)+(g.remarks.length>55?'…':'')+'"'):null)),
         tdn(g.amount,1),
-        td(linked
+        td(g.deleted
+          ?el('span',{style:'font-size:11px;color:var(--rust);display:flex;gap:4px;align-items:center;font-style:italic'},'deleted',
+              el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 4px;color:var(--green)',title:'Restore this GL line',onclick:async e=>{e.stopPropagation();g.deleted=false;await API.send('PATCH','/gl/'+g.id+'/delete',{deleted:false});rebuildGLTable();}},'↩ Undo'))
+          :linked
           ?el('span',{style:'font-size:11px;color:var(--green);display:flex;gap:3px;align-items:center'},
               '🔗 '+linked.name.slice(0,16),
               el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 4px',title:'Return to pool',onclick:async()=>{g.linkedProjectId=null;await linkGl(g,'GL returned to pool');}},'↩'),
-              el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 4px;color:var(--rust)',title:'Delete — permanently hidden, survives re-imports',onclick:async e=>{e.stopPropagation();if(!confirm('Delete this GL line?'))return;await API.send('PATCH','/gl/'+g.id+'/delete',{deleted:true});S.gl=S.gl.filter(x=>x.id!==g.id);rebuildGLTable();}},'✕'))
+              el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 4px;color:var(--rust)',title:'Delete — permanently hidden, survives re-imports',onclick:async e=>{e.stopPropagation();if(!confirm('Delete this GL line?'))return;await API.send('PATCH','/gl/'+g.id+'/delete',{deleted:true});g.deleted=true;rebuildGLTable();}},'✕'))
           :g.ignored
             ?el('span',{style:'font-size:11px;color:var(--ink-3);display:flex;gap:4px;align-items:center;font-style:italic'},'ignored',
                 el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 4px',title:'Restore',onclick:async()=>{g.ignored=false;await API.send('PATCH','/gl/'+g.id+'/ignore',{ignored:false});rebuildGLTable();}},'↩'),
-                el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 4px;color:var(--rust)',title:'Delete permanently',onclick:async e=>{e.stopPropagation();if(!confirm('Delete this GL line?'))return;await API.send('PATCH','/gl/'+g.id+'/delete',{deleted:true});S.gl=S.gl.filter(x=>x.id!==g.id);rebuildGLTable();}},'✕'))
+                el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 4px;color:var(--rust)',title:'Delete permanently',onclick:async e=>{e.stopPropagation();if(!confirm('Delete this GL line?'))return;await API.send('PATCH','/gl/'+g.id+'/delete',{deleted:true});g.deleted=true;rebuildGLTable();}},'✕'))
             :el('div',{style:'display:flex;gap:4px;align-items:center'},
                 el('span',{style:'font-size:11px;color:var(--amber);font-style:italic'},'unassigned'),
                 el('button',{class:'btn ghost sm',style:'font-size:10px;padding:1px 5px;color:var(--ink-3)',title:'Ignore — mark as reclassification, exclude from all calculations',
                   onclick:async e=>{e.stopPropagation();g.ignored=true;await API.send('PATCH','/gl/'+g.id+'/ignore',{ignored:true});rebuildGLTable();}},'Ignore'),
                 el('button',{class:'btn ghost sm',style:'font-size:10px;padding:1px 5px;color:var(--rust)',title:'Delete — permanently hidden, survives re-imports',
-                  onclick:async e=>{e.stopPropagation();if(!confirm('Delete this GL line? It will be excluded on all future imports too.'))return;await API.send('PATCH','/gl/'+g.id+'/delete',{deleted:true});S.gl=S.gl.filter(x=>x.id!==g.id);rebuildGLTable();}},'✕'))));
+                  onclick:async e=>{e.stopPropagation();if(!confirm('Delete this GL line? It will be excluded on all future imports too.'))return;await API.send('PATCH','/gl/'+g.id+'/delete',{deleted:true});g.deleted=true;rebuildGLTable();}},'✕'))));
       tbb.append(glRow);
     });
     t.append(tbb);
