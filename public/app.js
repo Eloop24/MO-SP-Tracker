@@ -1602,7 +1602,7 @@ function budgetTracker(code, glRows){
 ========================================================= */
 function viewProperty(){
   const code=VIEW.prop||S.properties[0].code;
-  if(code==='WVMO') return viewPropertyWVMO();
+  if(code==='WVMO'||code==='SPMO') return viewPropertyBudgetTracker(code);
   const p=PROP(code); const c=S.cash[code]||{};
   const budget=Number(p.spBudget)||0;
   const glSpent=glSpentFor(code);
@@ -1781,8 +1781,11 @@ function viewProperty(){
 /* =========================================================
    WVMO — PILOT: active-projects + budget-tracker layout
 ========================================================= */
-function viewPropertyWVMO(){
-  const code='WVMO';
+const _BUDGET_IDS={
+  WVMO:new Set(['bb644402-5eb9-4b40-85e7-56a555f20a1a','10117f84-31ff-4b2b-8c9c-bdb566851f01','22aa6995-b149-455c-b364-58725544969c','e1f4656e-a17b-4f6d-b182-48500b9c8994','90bee722-5f8e-4255-b11b-35b2a86da290','8de979e9-cfff-404b-a211-2f62706491f9','16c1b277-824b-40a5-9694-8531dbfbe072','fcbc2db6-37c5-45c1-944e-6bdb9ed1bf21','4de13189-dd1a-4074-9319-6d171ed29346','08acfbe7-a08d-4cfc-a744-c060ee425d6e','0be24236-d6af-4f6a-b8d0-a6a70233ad19']),
+  SPMO:new Set(['0180566f-5362-4c8e-828b-520937d8e39b','41a10bc0-9b34-47b7-a7ab-c34d9473885a','02d18241-ab6d-4279-8696-26251ffba049','5bc7a20e-d582-457c-a1ac-c1c204669fb4','395106be-8007-4ba5-83e4-810cab518d3b','d8eca409-eb06-40c4-b2b4-007bf709be50','2aa21f5e-d209-41d5-bc50-05a6a9497381','a049a011-ddd5-40e7-a9c3-f6166323a905','98bfd486-4999-43d3-8b09-1dd561c4d37c','823048da-123e-4dd7-b491-e0de8b567da3','87c67135-683f-4b11-ad2c-b5e67094f371','e08a6bcd-2835-40ad-8b03-c0150e4e2020','fcd4dfe2-0d70-40e7-af72-53755bce6749']),
+};
+function viewPropertyBudgetTracker(code){
   const p=PROP(code); const c=S.cash[code]||{};
   const budget=Number(p.spBudget)||0;
   const glSpent=glSpentFor(code);
@@ -1844,10 +1847,7 @@ function viewPropertyWVMO(){
   /* ── ACTIVE PROJECTS + BUDGET TABLE + GL (full width) ─── */
   const allGls=S.gl.filter(g=>g.property===code);
   /* Identify budget line items: either flagged by migration 006 OR known by seed IDs from migration 005 */
-  const WVMO_BUDGET_IDS=new Set(['bb644402-5eb9-4b40-85e7-56a555f20a1a','10117f84-31ff-4b2b-8c9c-bdb566851f01',
-    '22aa6995-b149-455c-b364-58725544969c','e1f4656e-a17b-4f6d-b182-48500b9c8994','90bee722-5f8e-4255-b11b-35b2a86da290',
-    '8de979e9-cfff-404b-a211-2f62706491f9','16c1b277-824b-40a5-9694-8531dbfbe072','fcbc2db6-37c5-45c1-944e-6bdb9ed1bf21',
-    '4de13189-dd1a-4074-9319-6d171ed29346','08acfbe7-a08d-4cfc-a744-c060ee425d6e','0be24236-d6af-4f6a-b8d0-a6a70233ad19']);
+  const WVMO_BUDGET_IDS=_BUDGET_IDS[code]||new Set();
   const isBudgetLine=p2=>p2.isBudgetItem||WVMO_BUDGET_IDS.has(p2.id);
   const budgetItems=projForProp(code).filter(isBudgetLine);
   const activeProjs=projForProp(code).filter(p2=>!isBudgetLine(p2)&&!p2.inHouse); // user contracts
@@ -2000,14 +2000,14 @@ function viewPropertyWVMO(){
   async function addBudgetItem(){
     const acct=prompt('Account code + title (e.g. "7399 - SP MISC"):');
     if(!acct||!acct.trim())return;
-    const newItem={id:uid('P'),property:'WVMO',category:acct.trim(),name:acct.trim(),
+    const newItem={id:uid('P'),property:code,category:acct.trim(),name:acct.trim(),
       description:'',anticipatedCost:0,steps:{},notes:'',onHold:false,pinned:false,
       inHouse:false,isBudgetItem:true,dateAdded:today()};
     await API.send('POST','/projects',newItem);
     await afterWrite('Budget item added');
   }
   bp.append(el('div',{class:'ph'},
-    el('h3',{},'2026 SP Budget'),
+    el('h3',{},'2026 SP Budget — '+(PROP(code).name||code)),
     el('div',{class:'sp'}),
     el('span',{class:'chip'},`${budgetItems.length} items`),
     allGls.length?el('span',{class:'chip'},'GL · '+allGls.length+' lines'):null,
@@ -2366,7 +2366,7 @@ function viewPropertyWVMO(){
 /* small floating "Move to…" menu */
 function showMoveMenu(g, anchor, currentPr, onDone){
   const existing=document.getElementById('_moveMenu'); if(existing)existing.remove();
-  const items=projForProp('WVMO').filter(p2=>(p2.isBudgetItem||WVMO_BUDGET_IDS.has(p2.id))&&p2.id!==currentPr.id);
+  const _mProp=currentPr.property||'WVMO';const _mIds=_BUDGET_IDS[_mProp]||new Set();const items=projForProp(_mProp).filter(p2=>(p2.isBudgetItem||_mIds.has(p2.id))&&p2.id!==currentPr.id);
   if(!items.length){toast('No other budget items to move to');return;}
   const rect=anchor.getBoundingClientRect();
   const menu=el('div',{id:'_moveMenu',style:`position:fixed;z-index:9999;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);min-width:200px;top:${rect.bottom+4}px;left:${rect.left}px;overflow:hidden`});

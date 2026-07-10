@@ -1,0 +1,32 @@
+-- Seed 2026 SP Budget items for Suson Pines (SPMO)
+INSERT INTO projects (id, property_code, category, name, description, anticipated_cost,
+  is_budget_item, date_added, steps, notes, on_hold, pinned, in_house,
+  no_contract, no_contract_set, ih_unit)
+VALUES
+  ('0180566f-5362-4c8e-828b-520937d8e39b','SPMO','7385 - SP COMMON AREA UPGRADES','Remaining deck area items',
+   'Umbrella, stand, table and chairs for deck area',5000,true,'2026-01-01','{}','',false,false,false,false,false,'budget'),
+  ('41a10bc0-9b34-47b7-a7ab-c34d9473885a','SPMO','7339 - SP PLUMBING','Drainage at 5939 & 5930',
+   'Drainage work at 5927-5939 area – Aim to Amaze contractor. April/May 26.',14000,true,'2026-01-01','{}','',false,false,false,false,false,'budget'),
+  ('02d18241-ab6d-4279-8696-26251ffba049','SPMO','7328 - SP CARPETS','Convert buildings to vinyl plank',
+   'Convert 5 buildings to vinyl plank (increased from 3). $2,900 per building. Feb 26.',15000,true,'2026-01-01','{}','',false,false,false,false,false,'budget'),
+  ('5bc7a20e-d582-457c-a1ac-c1c204669fb4','SPMO','7322 - SP BUILDING REPAIRS','Gutters replaced',
+   'Replace gutters on 5250-5238 building. Add downspouts. March 26.',20000,true,'2026-01-01','{}','',false,false,false,false,false,'budget'),
+  ('395106be-8007-4ba5-83e4-810cab518d3b','SPMO','7322 - SP BUILDING REPAIRS','Front doors replaced',
+   'Replace front doors on buildings. Budget for 4 doors at $2,460 per door. June 26.',10000,true,'2026-01-01','{}','',false,false,false,false,false,'budget'),
+  ('d8eca409-eb06-40c4-b2b4-007bf709be50','SPMO','7325 - SP GENERAL','New maintenance shed',
+   'New maintenance shed. $15k max, starting at $10k. July 26.',15000,true,'2026-01-01','{}','',false,false,false,false,false,'budget'),
+  ('2aa21f5e-d209-41d5-bc50-05a6a9497381','SPMO','7322 - SP BUILDING REPAIRS','Stucco for buildings 5250 and 5927',
+   '7 buildings remaining for stucco. Ongoing maintenance. Gutters will help. July 26.',10000,true,'2026-01-01','{}','',false,false,false,false,false,'budget'),
+  ('a049a011-ddd5-40e7-a9c3-f6166323a905','SPMO','7338 - SP PARKING','Asphalt – pavement by shop',
+   'Asphalt overlay in parking spaces. Did concrete street repairs in 2025. Get bids Q1 and review.',30000,true,'2026-01-01','{}','',false,false,false,false,false,'budget'),
+  ('98bfd486-4999-43d3-8b09-1dd561c4d37c','SPMO','7334 - SP LANDSCAPING','Mulch bed replacement and curb appeal',
+   'Focus on area around leasing office. May 26.',20000,true,'2026-01-01','{}','',false,false,false,false,false,'budget'),
+  ('823048da-123e-4dd7-b491-e0de8b567da3','SPMO','7334 - SP LANDSCAPING','Tree Trimming',
+   'Property-wide tree trimming. Oct 26.',15000,true,'2026-01-01','{}','',false,false,false,false,false,'budget'),
+  ('87c67135-683f-4b11-ad2c-b5e67094f371','SPMO','7347 - SP ROOFING','Roof Replacements',
+   '$184K spent in 2025 due to high winds in Q1. Sept 26.',120000,true,'2026-01-01','{}','',false,false,false,false,false,'budget'),
+  ('e08a6bcd-2835-40ad-8b03-c0150e4e2020','SPMO','7348 - SP SECURITY','Security cameras and alarm system',
+   'Cameras and security alarm for leasing office and amenities. Coordinate with RM on vendor. Feb 26.',5000,true,'2026-01-01','{}','',false,false,false,false,false,'budget'),
+  ('fcd4dfe2-0d70-40e7-af72-53755bce6749','SPMO','7337 - SP FURNITURE/EQUIPMENT','Handy Trac key control system',
+   'Handy Trac key control system. Feb 26.',8000,true,'2026-01-01','{}','',false,false,false,false,false,'budget')
+ON CONFLICT (id) DO NOTHING;
