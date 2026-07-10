@@ -1815,8 +1815,12 @@ function viewPropertyWVMO(){
         el('span',{class:'mono',style:'font-size:12px;font-weight:600'},fmt(ih?ihTotal(pr):(pr.actualCost!=null?pr.actualCost:pr.anticipatedCost),false)),
         (()=>{const sel=el('select',{style:'font-size:11px;padding:2px 6px;border:1px solid var(--line);border-radius:4px;background:var(--panel-2);color:var(--ink-2);max-width:180px',title:'Assign to SP Budget item',onclick:e=>e.stopPropagation(),onchange:async e=>{
     e.stopPropagation();
-    pr.linkedBudgetItemId=e.target.value||null;
-    await saveProject(pr,'Budget item assigned');
+    const val=e.target.value||null;
+    pr.linkedBudgetItemId=val;
+    try{
+      const r=await API.send('PATCH','/projects/'+pr.id+'/link',{linkedBudgetItemId:val});
+      if(r&&r.ok){toast('Budget item assigned');render();}else{toast('Save failed','err');}
+    }catch(ex){toast('Save failed','err');console.error(ex);}
   }});sel.append(el('option',{value:''},'— SP Budget item —'));budgetItems.forEach(bi=>sel.append(el('option',{value:bi.id},bi.name)));sel.value=pr.linkedBudgetItemId||'';return sel;})()),
       ih?progressEl(pr):trackEl(pr));
     return r;

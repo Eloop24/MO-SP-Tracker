@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { sessionMiddleware, requireAuth, login, logout, status } from './auth.js';
 import { api } from './routes.js';
 import { runMigrations } from './migrate.js';
+import { pool } from './db.js';
 import { seedIfEmpty } from './seed-if-empty.js';
 
 // Anchor to the working directory so the path is correct in dev (tsx from src/)
@@ -36,6 +37,9 @@ async function start() {
   let initialized = false;
   for (let attempt = 1; attempt <= 5; attempt++) {
     try {
+      // Ensure WVMO extended columns exist — runs every boot, no-op if already present
+      await pool.query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_budget_item boolean NOT NULL DEFAULT false`);
+      await pool.query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS linked_budget_item_id uuid`);
       await runMigrations();
       await seedIfEmpty();
       initialized = true;
