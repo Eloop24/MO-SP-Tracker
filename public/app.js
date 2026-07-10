@@ -1807,7 +1807,7 @@ function viewPropertyWVMO(){
       const bi=budgetItems.find(x=>x.id===biId);
       if(bi){const n=await autoMatchForItem(bi);if(n)toast(`Linked ${n} GL line${n===1?'':'s'} to ${bi.name}`);}
     }
-  }});sel.append(el('option',{value:''},'— SP Budget item —'));budgetItems.forEach(bi=>sel.append(el('option',{value:bi.id,...(pr.linkedBudgetItemId===bi.id?{selected:'true'}:{})},bi.name)));return sel;})()),
+  }});sel.append(el('option',{value:''},'— SP Budget item —'));budgetItems.forEach(bi=>sel.append(el('option',{value:bi.id},bi.name)));sel.value=pr.linkedBudgetItemId||'';return sel;})()),
       ih?progressEl(pr):trackEl(pr));
     return r;
   }
@@ -2006,7 +2006,9 @@ function viewPropertyWVMO(){
     else toast(`Matched ${matched} GL line${matched===1?'':'s'}`);
   }
   let glShowUnassignedOnly=false;
+  const glChecked=new Set(); // GL line IDs checked for batch match
   const glHeader=()=>{
+    const checkedCount=glChecked.size;
     const h=el('div',{class:'ph'});
     h.append(
       el('h3',{},'General Ledger'),el('div',{class:'sp'}),
@@ -2018,7 +2020,18 @@ function viewPropertyWVMO(){
             onclick:()=>{glShowUnassignedOnly=!glShowUnassignedOnly;rebuildGLTable();}},
             unassigned.length+' unassigned')
         :el('span',{class:'chip done'},'all assigned'),
-      el('button',{class:'btn sm',style:'margin-left:6px',title:'Auto-link unassigned GL lines to budget items by GL account code',onclick:autoMatchGL},'⚡ Auto-match'));
+      checkedCount
+        ?el('button',{class:'btn accent sm',style:'margin-left:6px',
+            onclick:async()=>{
+              let n=0;
+              for(const gid of glChecked){
+                const g=allGls.find(x=>String(x.id)===gid);
+                if(g&&!g.linkedProjectId){const pr2=matchBudgetItem(g);if(pr2){g.linkedProjectId=pr2.id;await linkGl(g,'Auto-matched');n++;}}
+              }
+              glChecked.clear();
+              toast(n?`Matched ${n} line${n===1?'':'s'}`:'No matches found');
+            }},`⚡ Match ${checkedCount} selected`)
+        :el('button',{class:'btn sm',style:'margin-left:6px',title:'Auto-match all unassigned GL lines',onclick:autoMatchGL},'⚡ Match all'));
     return h;
   };
   const glHeaderEl=glHeader();
@@ -2033,20 +2046,33 @@ function viewPropertyWVMO(){
     if(allGls.length){
     const hint=el('div',{id:'_glHint',style:'padding:6px 16px;font-size:11.5px;color:var(--ink-3);border-bottom:1px solid var(--line-2);background:var(--panel-2)'},'⠿  Drag rows onto a budget item or drop on a row in the SP Budget table');
     const t=el('table',{class:'tbl'});
-    t.append(el('thead',{},tr(th(''),th('Vendor / description'),th('Amount','r'),th('Assigned to'))));
+    /* "select all unassigned" checkbox in header */
+    const allCb=el('input',{type:'checkbox',title:'Select all unassigned',style:'cursor:pointer'});
+    allCb.onchange=()=>{
+      const displayGls2=glShowUnassignedOnly?unassigned:allGls;
+      displayGls2.filter(g=>!g.linkedProjectId).forEach(g=>{
+        if(allCb.checked)glChecked.add(String(g.id)); else glChecked.delete(String(g.id));
+      });
+      rebuildGLTable();
+    };
+    t.append(el('thead',{},tr(el('th',{style:'width:32px;padding:6px 8px'},allCb),th('Vendor / description'),th('Amount','r'),th('Assigned to'))));
     const tbb=el('tbody');
     const displayGls=glShowUnassignedOnly?unassigned:allGls;
     displayGls.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
     displayGls.forEach(g=>{
       const linked=g.linkedProjectId?S.projects.find(x=>x.id===g.linkedProjectId):null;
+      const gidStr=String(g.id);
+      const cb=el('input',{type:'checkbox',style:'cursor:pointer',title:linked?'Assigned (unlink first to re-match)':'Select for batch auto-match'});
+      if(linked){cb.disabled=true;cb.title='Already assigned';}
+      else{cb.checked=glChecked.has(gidStr);cb.onchange=()=>{if(cb.checked)glChecked.add(gidStr);else glChecked.delete(gidStr);/* refresh header */const oldH=gp.querySelector('.ph');if(oldH)oldH.replaceWith(glHeader());};}
       const glRow=el('tr',{
         draggable:'true',
         style:'cursor:grab'+(linked?';opacity:.6':''),
-        ondragstart:e=>{e.dataTransfer.setData('glId',String(g.id));e.dataTransfer.effectAllowed='link';glRow.style.opacity='.35';},
+        ondragstart:e=>{e.dataTransfer.setData('glId',gidStr);e.dataTransfer.effectAllowed='link';glRow.style.opacity='.35';},
         ondragend:()=>{glRow.style.opacity=linked?'.6':'1';}
       });
       glRow.append(
-        td(el('span',{style:'font-size:14px;color:var(--ink-3);user-select:none'},'⠿')),
+        el('td',{style:'padding:4px 8px;width:32px'},cb),
         td(el('div',{style:'font-size:12px;max-width:180px'},
           el('div',{style:'font-weight:500'},g.vendor||g.category||'—'),
           el('div',{style:'color:var(--ink-3);font-size:11px'},(g.date||'')+(g.category?' · '+g.category.slice(0,18):'')))),
