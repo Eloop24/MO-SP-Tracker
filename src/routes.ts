@@ -399,8 +399,8 @@ api.post('/import/gl/confirm', async (req, res) => {
     const assignments: Record<string,string> = {};
     for (const r of saved.rows) assignments[r.control] = r.linked_project_id;
 
-    // Build category → project map for auto-matching new unassigned lines.
-    // If multiple projects share a category, prefer the one with the most budget remaining.
+    // Build account-code → project map for auto-matching on re-import.
+    // Budget items have categories like "7322 - SP BUILDING REPAIRS"; extract leading 4-digit code.
     const projRows = await c.query(
       `select p.id, p.property_code, p.category,
               coalesce(p.anticipated_cost,0) as budget,
@@ -411,22 +411,36 @@ api.post('/import/gl/confirm', async (req, res) => {
        group by p.id, p.property_code, p.category, p.anticipated_cost
        order by (coalesce(p.anticipated_cost,0) - coalesce(sum(g2.amount),0)) desc`
     );
-    // key = "PROPERTY|category" → best-fit project id (first = most budget remaining)
+    // acctMap: "PROPERTY|4-digit-code" → project id (budget items keyed by leading account number)
+    // catMap:  "PROPERTY|full-category" → project id (fallback for exact category match)
+    const acctMap: Record<string,string> = {};
     const catMap: Record<string,string> = {};
     for (const r of projRows.rows) {
-      const key = r.property_code + '|' + r.category;
-      if (!catMap[key]) catMap[key] = r.id;
+      const catFull = r.property_code + '|' + r.category;
+      if (!catMap[catFull]) catMap[catFull] = r.id;
+      const m = String(r.category || '').match(/^(\d{4})/);
+      if (m) {
+        const acctKey = r.property_code + '|' + m[1];
+        if (!acctMap[acctKey]) acctMap[acctKey] = r.id;
+      }
     }
 
     await c.query('truncate gl_lines');
     let autoMatched = 0;
     for (const g of lines) {
       // 1. Saved manual assignment by control# takes priority
-      // 2. Fall back to category auto-match for new unassigned lines
       let lp = (g.control && assignments[g.control]) ? assignments[g.control] : null;
-      if (!lp && g.category) {
-        const catKey = g.property + '|' + g.category;
-        if (catMap[catKey]) { lp = catMap[catKey]; autoMatched++; }
+      if (!lp) {
+        // 2. Match by 4-digit GL account number → budget item category prefix
+        if (g.account) {
+          const aKey = g.property + '|' + String(g.account).trim();
+          if (acctMap[aKey]) { lp = acctMap[aKey]; autoMatched++; }
+        }
+        // 3. Fallback: exact category text match
+        if (!lp && g.category) {
+          const catKey = g.property + '|' + g.category;
+          if (catMap[catKey]) { lp = catMap[catKey]; autoMatched++; }
+        }
       }
       await c.query(
         `insert into gl_lines(id,property_code,account,category,date,vendor,control,amount,remarks,linked_project_id,partial)

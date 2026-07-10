@@ -1942,16 +1942,37 @@ function viewPropertyWVMO(){
   const gp=el('div',{class:'panel',style:'overflow:hidden;display:flex;flex-direction:column'});
   const unassigned=allGls.filter(g=>!g.linkedProjectId&&Number(g.amount)>0);
   /* Auto-match unassigned GL lines to budget items by category */
+  /* Extract leading 4-digit account code from a budget item's category string */
+  const biAcct=p2=>{const m=p2.category&&p2.category.match(/^(\d{4})/);return m?m[1]:null;};
+  /* Match a GL line to a budget item: prefer account# match, fall back to category text match */
+  const matchBudgetItem=g=>{
+    // 1. exact account number match (e.g. g.account="7322" vs bi.category="7322 - SP BUILDING REPAIRS")
+    if(g.account){
+      const hit=budgetItems.find(p2=>biAcct(p2)===String(g.account).trim());
+      if(hit)return hit;
+    }
+    // 2. category text contains account number from GL line
+    if(g.category){
+      const hit=budgetItems.find(p2=>g.category&&p2.category&&
+        p2.category.trim().toLowerCase()===g.category.trim().toLowerCase());
+      if(hit)return hit;
+      // 3. partial: budget item category starts with what the GL category says
+      const glCat=g.category.trim().toLowerCase();
+      const hit2=budgetItems.find(p2=>p2.category&&p2.category.trim().toLowerCase().includes(glCat));
+      if(hit2)return hit2;
+    }
+    return null;
+  };
   async function autoMatchGL(){
     const candidates=allGls.filter(g=>!g.linkedProjectId&&Number(g.amount)>0);
     if(!candidates.length){toast('No unassigned GL lines to match');return;}
     let matched=0;
     for(const g of candidates){
-      const pr=budgetItems.find(p2=>p2.category&&g.category&&
-        p2.category.trim().toLowerCase()===g.category.trim().toLowerCase());
+      const pr=matchBudgetItem(g);
       if(pr){g.linkedProjectId=pr.id;await linkGl(g,'Auto-matched');matched++;}
     }
-    if(!matched) toast('No category matches found');
+    if(!matched) toast('No GL lines matched — check account codes on the budget items');
+    else toast(`Matched ${matched} GL line${matched===1?'':'s'}`);
   }
   gp.append(el('div',{class:'ph'},
     el('h3',{},'General Ledger'),el('div',{class:'sp'}),
