@@ -65,17 +65,6 @@ async function writeProject(client: pg.PoolClient, p: Project, isNew: boolean): 
       [...cols, p.id]
     );
   }
-  // Extended WVMO fields — written separately so saves never fail if migration pending
-  const lbi = (p as any).linkedBudgetItemId || null;
-  const ibi = !!(p as any).isBudgetItem;
-  try {
-    await client.query(
-      `update projects set linked_budget_item_id=$1, is_budget_item=$2 where id=$3`,
-      [lbi, ibi, p.id]
-    );
-  } catch (_) {
-    // columns not yet migrated — safe to ignore, migration will add them
-  }
   // sync bids + progress notes (record-level)
   await client.query('delete from bids where project_id=$1', [p.id]);
   let slot = 0;
@@ -99,6 +88,9 @@ api.post('/projects', async (req, res) => {
   p.id = p.id || uid('P');
   p.dateAdded = p.dateAdded || new Date().toISOString().slice(0, 10);
   await tx((c) => writeProject(c, p, true));
+  // WVMO extended fields — separate query outside tx so a missing column never breaks the save
+  try { await query(`update projects set linked_budget_item_id=$1,is_budget_item=$2 where id=$3`,
+    [(p as any).linkedBudgetItemId||null,!!(p as any).isBudgetItem,p.id]); } catch(_){}
   const r = await query('select * from projects where id=$1', [p.id]);
   res.json(rowToProject(r.rows[0], p.bids || [], p.progressNotes || []));
 });
@@ -109,6 +101,9 @@ api.patch('/projects/:id', async (req, res) => {
   const p = { ...(req.body as Project), id: req.params.id };
   if (!p.property || !p.name) return res.status(400).json({ error: 'property and name are required' });
   await tx((c) => writeProject(c, p, false));
+  // WVMO extended fields — separate query outside tx so a missing column never breaks the save
+  try { await query(`update projects set linked_budget_item_id=$1,is_budget_item=$2 where id=$3`,
+    [(p as any).linkedBudgetItemId||null,!!(p as any).isBudgetItem,p.id]); } catch(_){}
   const r = await query('select * from projects where id=$1', [p.id]);
   res.json(rowToProject(r.rows[0], p.bids || [], p.progressNotes || []));
 });
