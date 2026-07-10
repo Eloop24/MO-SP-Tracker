@@ -444,6 +444,12 @@ api.delete('/cash-adjustments/:id', async (req, res) => {
 });
 
 /* ---------- GL link / partial ---------- */
+api.patch('/gl/:id/ignore', async (req, res) => {
+  const { ignored } = req.body as { ignored: boolean };
+  await query('update gl_lines set ignored=$1 where id=$2', [!!ignored, req.params.id]);
+  res.json({ ok: true });
+});
+
 api.patch('/gl/:id/link', async (req, res) => {
   const { linkedProjectId, partial } = req.body || {};
   await query('update gl_lines set linked_project_id=$1, partial=$2 where id=$3',
@@ -480,11 +486,15 @@ api.post('/import/gl/confirm', async (req, res) => {
     // Preserve existing GL assignments (control# → project) so monthly re-upload
     // does not wipe manually dragged assignments.
     const saved = await c.query(
-      `select control, linked_project_id from gl_lines
-       where control is not null and control <> '' and linked_project_id is not null`
+      `select control, linked_project_id, ignored from gl_lines
+       where control is not null and control <> ''`
     );
     const assignments: Record<string,string> = {};
-    for (const r of saved.rows) assignments[r.control] = r.linked_project_id;
+    const ignoredControls = new Set<string>();
+    for (const r of saved.rows) {
+      if (r.linked_project_id) assignments[r.control] = r.linked_project_id;
+      if (r.ignored) ignoredControls.add(r.control);
+    }
 
     // Build account-code → project map for auto-matching on re-import.
     // Budget items have categories like "7322 - SP BUILDING REPAIRS"; extract leading 4-digit code.
@@ -530,9 +540,10 @@ api.post('/import/gl/confirm', async (req, res) => {
         }
       }
       await c.query(
-        `insert into gl_lines(id,property_code,account,category,date,vendor,control,amount,remarks,linked_project_id,partial)
-         values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,false)`,
-        [g.id, g.property, g.account || null, g.category || null, dnull(g.date), g.vendor || null, g.control || null, Number(g.amount) || 0, g.remarks || null, lp]
+        `insert into gl_lines(id,property_code,account,category,date,vendor,control,amount,remarks,linked_project_id,partial,ignored)
+         values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,false,$11)`,
+        [g.id, g.property, g.account || null, g.category || null, dnull(g.date), g.vendor || null, g.control || null, Number(g.amount) || 0, g.remarks || null, lp,
+         !!(g.control && ignoredControls.has(g.control))]
       );
     }
     console.log(`GL import: ${lines.length} lines, ${autoMatched} auto-matched by category`);

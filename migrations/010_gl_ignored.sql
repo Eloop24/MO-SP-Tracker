@@ -1,0 +1,1 @@
+ALTER TABLE gl_lines ADD COLUMN IF NOT EXISTS ignored boolean NOT NULL DEFAULT false;

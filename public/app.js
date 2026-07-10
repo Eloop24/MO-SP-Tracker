@@ -2087,6 +2087,33 @@ function viewPropertyWVMO(){
     tbody.append(detailRow);
   });
 
+  /* ── Unbudgeted GL rows: group by account, show red positive variance ─── */
+  const unbudgetedGls=allGls.filter(g=>Number(g.amount)>0&&!g.ignored&&!budgetItems.some(bi=>bi.id===g.linkedProjectId));
+  if(unbudgetedGls.length){
+    // group by account code (fall back to category, then vendor)
+    const groups=new Map();
+    unbudgetedGls.forEach(g=>{
+      const key=g.account||g.category||'Other';
+      const grp=groups.get(key)||{key,label:g.category||g.account||'Other',total:0,lines:[]};
+      grp.total+=Number(g.amount)||0;
+      grp.lines.push(g);
+      groups.set(key,grp);
+    });
+    tbody.append(el('tr',{style:'background:var(--canvas)'},
+      el('td',{colspan:'6',style:'padding:5px 16px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:700;border-top:2px solid var(--line)'},'⚠ Unbudgeted GL Spend')));
+    groups.forEach(grp=>{
+      tbody.append(el('tr',{style:'background:var(--canvas);border-bottom:1px solid var(--line-2);opacity:.9'},
+        el('td',{style:'padding:7px 12px;font-size:11px;color:var(--amber);font-family:var(--mono)'},grp.key),
+        el('td',{style:'padding:7px 12px;font-size:12px;color:var(--ink-2)'},
+          el('div',{},grp.label.replace(/^SP\s*/i,'').slice(0,40)),
+          el('div',{style:'font-size:10.5px;color:var(--ink-3)'},grp.lines.length+' line'+(grp.lines.length===1?'':'s')+' · no budget set')),
+        el('td',{style:'padding:7px 16px;text-align:right;color:var(--ink-3)'},'—'),
+        el('td',{style:'padding:7px 16px;text-align:right;font-family:var(--mono);font-size:12px'},fmt(grp.total,false)),
+        el('td',{style:'padding:7px 16px;text-align:right;color:var(--ink-3)'},'—'),
+        el('td',{style:'padding:7px 16px;text-align:right;font-family:var(--mono);font-weight:700;color:var(--rust)'},'+'+fmt(grp.total,false))));
+    });
+  }
+
   /* totals footer */
   const tfoot=el('tfoot',{});
   if(unbudgetedGlSpend){
@@ -2104,7 +2131,7 @@ function viewPropertyWVMO(){
   tbl.append(tbody,tfoot); bp.append(tbl);
   /* ── SECTION 3: GL lines (draggable, sidebar) ──────── */
   const gp=el('div',{class:'panel',style:'overflow:hidden;display:flex;flex-direction:column'});
-  const unassigned=allGls.filter(g=>!g.linkedProjectId&&Number(g.amount)>0);
+  const unassigned=allGls.filter(g=>!g.linkedProjectId&&Number(g.amount)>0&&!g.ignored);
   /* Auto-match unassigned GL lines to budget items by category */
   /* Match a GL line to a budget item: prefer account# match, fall back to category text match */
   const matchBudgetItem=g=>{
@@ -2139,8 +2166,10 @@ function viewPropertyWVMO(){
   let glShowUnassignedOnly=false;
   let glCollapsed=false;
   let glShowContra=false;
-  const contraLines=allGls.filter(g=>Number(g.amount)<=0&&!g.linkedProjectId); // unassigned contra only
-  const positiveGls=allGls.filter(g=>Number(g.amount)>0);
+  let glShowIgnored=false;
+  const contraLines=allGls.filter(g=>Number(g.amount)<=0&&!g.linkedProjectId&&!g.ignored);
+  const positiveGls=allGls.filter(g=>Number(g.amount)>0&&!g.ignored);
+  const ignoredGls=allGls.filter(g=>g.ignored);
   const glChecked=new Set(); // GL line IDs checked for batch match
   const glHeader=()=>{
     const checkedCount=glChecked.size;
@@ -2159,8 +2188,13 @@ function viewPropertyWVMO(){
         :el('span',{class:'chip done'},'all assigned'),
       contraLines.length?el('button',{class:'btn'+(glShowContra?' accent':' ghost')+' sm',style:'font-size:11px',
           title:glShowContra?'Back to normal view':'Show '+contraLines.length+' unassigned contra/credit entries',
-          onclick:()=>{glShowContra=!glShowContra;glShowUnassignedOnly=false;rebuildGLTable();}},
+          onclick:()=>{glShowContra=!glShowContra;glShowUnassignedOnly=false;glShowIgnored=false;rebuildGLTable();}},
           contraLines.length+' unassigned contra')
+        :null,
+      ignoredGls.length?el('button',{class:'btn'+(glShowIgnored?' accent':' ghost')+' sm',style:'font-size:11px;color:var(--ink-3)',
+          title:glShowIgnored?'Hide ignored lines':'Show '+ignoredGls.length+' ignored lines',
+          onclick:()=>{glShowIgnored=!glShowIgnored;glShowContra=false;glShowUnassignedOnly=false;rebuildGLTable();}},
+          ignoredGls.length+' ignored')
         :null,
       checkedCount
         ?el('button',{class:'btn accent sm',style:'margin-left:6px',
@@ -2192,7 +2226,7 @@ function viewPropertyWVMO(){
     /* "select all unassigned" checkbox in header */
     const allCb=el('input',{type:'checkbox',title:'Select all unassigned',style:'cursor:pointer'});
     allCb.onchange=()=>{
-      const baseGls2=glShowContra?contraLines:(glShowUnassignedOnly?unassigned:positiveGls);
+      const baseGls2=glShowIgnored?ignoredGls:glShowContra?contraLines:(glShowUnassignedOnly?unassigned:positiveGls);
       const displayGls2=baseGls2;
       displayGls2.filter(g=>!g.linkedProjectId).forEach(g=>{
         if(allCb.checked)glChecked.add(String(g.id)); else glChecked.delete(String(g.id));
@@ -2201,7 +2235,7 @@ function viewPropertyWVMO(){
     };
     t.append(el('thead',{},tr(el('th',{style:'width:32px;padding:6px 8px'},allCb),th('Vendor / description'),th('Amount','r'),th('Assigned to'))));
     const tbb=el('tbody');
-    const baseGls=glShowContra?contraLines:(glShowUnassignedOnly?unassigned:positiveGls);
+    const baseGls=glShowIgnored?ignoredGls:glShowContra?contraLines:(glShowUnassignedOnly?unassigned:positiveGls);
     const displayGls=baseGls;
     displayGls.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
     displayGls.forEach(g=>{
@@ -2227,7 +2261,13 @@ function viewPropertyWVMO(){
           ?el('span',{style:'font-size:11px;color:var(--green);display:flex;gap:3px;align-items:center'},
               '🔗 '+linked.name.slice(0,16),
               el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 4px',title:'Return to pool',onclick:async()=>{g.linkedProjectId=null;await linkGl(g,'GL returned to pool');}},'↩'))
-          :el('span',{style:'font-size:11px;color:var(--amber);font-style:italic'},'unassigned')));
+          :g.ignored
+            ?el('span',{style:'font-size:11px;color:var(--ink-3);display:flex;gap:4px;align-items:center;font-style:italic'},'ignored',
+                el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 4px',title:'Restore',onclick:async()=>{g.ignored=false;await API.send('PATCH','/gl/'+g.id+'/ignore',{ignored:false});rebuildGLTable();}},'↩'))
+            :el('div',{style:'display:flex;gap:4px;align-items:center'},
+                el('span',{style:'font-size:11px;color:var(--amber);font-style:italic'},'unassigned'),
+                el('button',{class:'btn ghost sm',style:'font-size:10px;padding:1px 5px;color:var(--ink-3)',title:'Ignore — mark as reclassification, exclude from all calculations',
+                  onclick:async e=>{e.stopPropagation();g.ignored=true;await API.send('PATCH','/gl/'+g.id+'/ignore',{ignored:true});rebuildGLTable();}},'Ignore'))));
       tbb.append(glRow);
     });
     t.append(tbb);
