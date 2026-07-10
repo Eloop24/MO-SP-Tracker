@@ -1942,7 +1942,7 @@ function viewPropertyWVMO(){
     el('span',{class:'chip'},`${allGls.length} lines`),
     el('span',{class:'chip'},fmt(glSpent)),
     unassigned.length?el('span',{class:'chip hold'},unassigned.length+' unassigned'):el('span',{class:'chip done'},'all assigned'),
-    unassigned.length?el('button',{class:'btn sm',style:'margin-left:6px',title:'Auto-link unassigned lines to budget items by GL account code',onclick:autoMatchGL},'⚡ Auto-match'):null));
+    el('button',{class:'btn sm',style:'margin-left:6px',title:'Auto-link unassigned GL lines to budget items by GL account code',onclick:autoMatchGL},'⚡ Auto-match')));
   if(allGls.length){
     gp.append(el('div',{style:'padding:6px 16px;font-size:11.5px;color:var(--ink-3);border-bottom:1px solid var(--line-2);background:var(--panel-2)'},'⠿  Drag rows onto a budget item above, or drop directly on a row'));
     const t=el('table',{class:'tbl'});
