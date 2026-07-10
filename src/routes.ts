@@ -530,7 +530,9 @@ api.post('/import/gl/confirm', async (req, res) => {
       }
     }
 
-    await c.query('truncate gl_lines');
+    // Only replace lines for properties present in this upload — leaves other properties untouched
+    const affectedProps = [...new Set(lines.map((l: any) => l.property))];
+    await c.query('delete from gl_lines where property_code = any($1::text[])', [affectedProps]);
     let autoMatched = 0;
     for (const g of lines) {
       // 1. Saved manual assignment by control# takes priority
