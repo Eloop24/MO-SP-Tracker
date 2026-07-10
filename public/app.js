@@ -1819,11 +1819,21 @@ function viewPropertyWVMO(){
   const varColor   =totalVar>500?'var(--rust)':totalVar<-500?'var(--green)':'var(--ink)';
 
   const bp=el('div',{class:'panel',style:'overflow:visible'});
+  async function addBudgetItem(){
+    const acct=prompt('Account code + title (e.g. "7399 - SP MISC"):');
+    if(!acct||!acct.trim())return;
+    const newItem={id:uid('P'),property:'WVMO',category:acct.trim(),name:acct.trim(),
+      description:'',anticipatedCost:0,steps:{},notes:'',onHold:false,pinned:false,
+      inHouse:false,isBudgetItem:true,dateAdded:today()};
+    await API.send('POST','/projects',newItem);
+    await afterWrite('Budget item added');
+  }
   bp.append(el('div',{class:'ph'},
     el('h3',{},'2026 SP Budget'),
     el('div',{class:'sp'}),
     el('span',{class:'chip'},`${budgetItems.length} items`),
-    allGls.length?el('span',{class:'chip'},'GL · '+allGls.length+' lines'):null));
+    allGls.length?el('span',{class:'chip'},'GL · '+allGls.length+' lines'):null,
+    el('button',{class:'btn ghost sm',style:'margin-left:6px',title:'Add an unplanned or miscellaneous budget line',onclick:addBudgetItem},'+ Add item')));
   /* summary strip */
   const strip=el('div',{style:'display:flex;border-bottom:1px solid var(--line-2)'});
   const kk=(lbl,val,color)=>{const d=el('div',{style:'flex:1;padding:10px 16px;text-align:center;border-right:1px solid var(--line-2)'});d.append(el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600'},lbl));d.append(el('div',{class:'mono',style:'font-size:16px;font-weight:700;margin-top:2px'+(color?';color:'+color:'')},fmt(val)));return d;};
@@ -1923,6 +1933,15 @@ function viewPropertyWVMO(){
         ondrop:async e=>{e.preventDefault();dz.style.background='';dz.style.borderColor='var(--line)';const gid=e.dataTransfer.getData('glId');if(!gid)return;const g=S.gl.find(x=>x.id===gid||String(x.id)===gid);if(!g){toast('GL line not found');return;}g.linkedProjectId=pr.id;await linkGl(g,'GL assigned · '+pr.name);}
       },'↓ Drop GL lines here to assign spend');
       detailCell.append(dz);
+      /* inline notes */
+      const notesWrap=el('div',{style:'margin-top:10px;border-top:1px solid var(--line-2);padding-top:8px'});
+      notesWrap.append(el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600;margin-bottom:4px'},'Notes'));
+      const noteTa=el('textarea',{style:'width:100%;min-height:54px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;font-size:12px;background:var(--panel-2);resize:vertical;box-sizing:border-box',
+        placeholder:'Status, comments, follow-up…',
+        onblur:async()=>{pr.notes=noteTa.value;await saveProject(pr,'Notes saved');}});
+      noteTa.value=pr.notes||'';
+      notesWrap.append(noteTa);
+      detailCell.append(notesWrap);
     }
     redrawDetail();
     detailRow.append(detailCell);
@@ -1974,24 +1993,42 @@ function viewPropertyWVMO(){
     if(!matched) toast('No GL lines matched — check account codes on the budget items');
     else toast(`Matched ${matched} GL line${matched===1?'':'s'}`);
   }
-  gp.append(el('div',{class:'ph'},
-    el('h3',{},'General Ledger'),el('div',{class:'sp'}),
-    el('span',{class:'chip'},`${allGls.length} lines`),
-    el('span',{class:'chip'},fmt(glSpent)),
-    unassigned.length?el('span',{class:'chip hold'},unassigned.length+' unassigned'):el('span',{class:'chip done'},'all assigned'),
-    el('button',{class:'btn sm',style:'margin-left:6px',title:'Auto-link unassigned GL lines to budget items by GL account code',onclick:autoMatchGL},'⚡ Auto-match')));
+  let glShowUnassignedOnly=false;
+  const glHeader=()=>{
+    const h=el('div',{class:'ph'});
+    h.append(
+      el('h3',{},'General Ledger'),el('div',{class:'sp'}),
+      el('span',{class:'chip',style:'cursor:default'},`${allGls.length} lines`),
+      el('span',{class:'chip',style:'cursor:default'},fmt(glSpent)),
+      unassigned.length
+        ?el('button',{class:'btn'+(glShowUnassignedOnly?' accent':' ghost')+' sm',style:'font-size:12px',
+            title:glShowUnassignedOnly?'Show all GL lines':'Show only unassigned GL lines',
+            onclick:()=>{glShowUnassignedOnly=!glShowUnassignedOnly;rebuildGLTable();}},
+            unassigned.length+' unassigned')
+        :el('span',{class:'chip done'},'all assigned'),
+      el('button',{class:'btn sm',style:'margin-left:6px',title:'Auto-link unassigned GL lines to budget items by GL account code',onclick:autoMatchGL},'⚡ Auto-match'));
+    return h;
+  };
+  const glHeaderEl=glHeader();
+  gp.append(glHeaderEl);
   /* prominent auto-match action bar */
   const autoBar=el('div',{style:'display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--panel);border:1px solid var(--line);border-radius:8px;margin-bottom:0'});
   autoBar.append(
     el('span',{style:'font-size:13px;color:var(--ink-2);flex:1'},'Auto-match GL lines to budget items by account code — assigns unmatched lines in one click.'),
     el('button',{class:'btn accent',style:'white-space:nowrap',onclick:autoMatchGL},'⚡ Auto-match GL'));
-  if(allGls.length){
-    gp.append(el('div',{style:'padding:6px 16px;font-size:11.5px;color:var(--ink-3);border-bottom:1px solid var(--line-2);background:var(--panel-2)'},'⠿  Drag rows onto a budget item above, or drop directly on a row'));
+  let _glTableEl=null;
+  function rebuildGLTable(){
+    if(_glTableEl)_glTableEl.remove();
+    /* rebuild header chip state */
+    const newH=glHeader(); glHeaderEl.replaceWith(newH);
+    if(allGls.length){
+    const hint=el('div',{id:'_glHint',style:'padding:6px 16px;font-size:11.5px;color:var(--ink-3);border-bottom:1px solid var(--line-2);background:var(--panel-2)'},'⠿  Drag rows onto a budget item or drop on a row in the SP Budget table');
     const t=el('table',{class:'tbl'});
     t.append(el('thead',{},tr(th(''),th('Vendor / description'),th('Amount','r'),th('Assigned to'))));
     const tbb=el('tbody');
-    allGls.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-    allGls.forEach(g=>{
+    const displayGls=glShowUnassignedOnly?unassigned:allGls;
+    displayGls.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    displayGls.forEach(g=>{
       const linked=g.linkedProjectId?S.projects.find(x=>x.id===g.linkedProjectId):null;
       const glRow=el('tr',{
         draggable:'true',
@@ -2012,27 +2049,21 @@ function viewPropertyWVMO(){
           :el('span',{style:'font-size:11px;color:var(--amber);font-style:italic'},'unassigned')));
       tbb.append(glRow);
     });
-    t.append(tbb); gp.append(t);
-  } else gp.append(el('div',{class:'empty'},'No GL lines. Upload a general ledger on the Data tab.'));
-  // side-by-side: budget table left, GL sidebar right
-  const glScroll=el('div',{style:'overflow-y:auto;flex:1;max-height:600px'});
-  // move table into scroll container
-  if(gp.children.length>1){
-    const kids=Array.from(gp.children).slice(1); // skip header
-    kids.forEach(k=>glScroll.append(k));
-    gp.append(glScroll);
-  } else { glScroll.append(gp.lastChild||''); gp.append(glScroll); }
-  gp.style.maxHeight='none';
-  const budgetGlRow=el('div',{style:'display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start'});
-  budgetGlRow.append(bp,gp);
-  body.append(pj, autoBar, budgetGlRow);
+    t.append(tbb);
+    const wrap=el('div',{style:'overflow-x:auto'});wrap.append(t);
+    _glTableEl=el('div'); _glTableEl.append(hint,wrap);
+    gp.append(_glTableEl);
+    } else { _glTableEl=el('div',{class:'empty'},'No GL lines. Upload a general ledger on the Data tab.'); gp.append(_glTableEl); }
+  }
+  rebuildGLTable();
+  body.append(pj, autoBar, bp, gp);
   return {bar,body};
 }
 
 /* small floating "Move to…" menu */
 function showMoveMenu(g, anchor, currentPr, onDone){
   const existing=document.getElementById('_moveMenu'); if(existing)existing.remove();
-  const items=projForProp('WVMO').filter(p2=>!p2.inHouse&&p2.id!==currentPr.id);
+  const items=projForProp('WVMO').filter(p2=>(p2.isBudgetItem||WVMO_BUDGET_IDS.has(p2.id))&&p2.id!==currentPr.id);
   if(!items.length){toast('No other budget items to move to');return;}
   const rect=anchor.getBoundingClientRect();
   const menu=el('div',{id:'_moveMenu',style:`position:fixed;z-index:9999;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);min-width:200px;top:${rect.bottom+4}px;left:${rect.left}px;overflow:hidden`});

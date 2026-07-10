@@ -47,13 +47,14 @@ async function writeProject(client: pg.PoolClient, p: Project, isNew: boolean): 
     JSON.stringify(p.steps || {}), p.notes || '', !!p.onHold, !!p.pinned, !!p.inHouse, p.ihUnit === 'quantity' ? 'quantity' : 'budget',
     nnull(p.totalToComplete), nnull(p.amountCompleted), !!p.noContract, !!p.noContractSet,
     (p as any).linkedBudgetItemId || null,
+    !!(p as any).isBudgetItem,
   ];
   if (isNew) {
     await client.query(
       `insert into projects(property_code,category,name,description,plan,action_item,contractor,anticipated_cost,actual_cost,
          date_added,planned_start,planned_end,steps,notes,on_hold,pinned,in_house,ih_unit,total_to_complete,amount_completed,
-         no_contract,no_contract_set,linked_budget_item_id,id)
-       values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
+         no_contract,no_contract_set,linked_budget_item_id,is_budget_item,id)
+       values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)`,
       [...cols, p.id]
     );
   } else {
@@ -61,7 +62,7 @@ async function writeProject(client: pg.PoolClient, p: Project, isNew: boolean): 
       `update projects set property_code=$1,category=$2,name=$3,description=$4,plan=$5,action_item=$6,contractor=$7,
          anticipated_cost=$8,actual_cost=$9,date_added=$10,planned_start=$11,planned_end=$12,steps=$13,notes=$14,on_hold=$15,
          pinned=$16,in_house=$17,ih_unit=$18,total_to_complete=$19,amount_completed=$20,no_contract=$21,no_contract_set=$22,
-         linked_budget_item_id=$23,updated_at=now() where id=$24`,
+         linked_budget_item_id=$23,is_budget_item=$24,updated_at=now() where id=$25`,
       [...cols, p.id]
     );
   }
