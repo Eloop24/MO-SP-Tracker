@@ -1882,7 +1882,9 @@ function viewPropertyWVMO(){
     el('th',{style:'padding:8px 16px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600'},'Variance'))));
   const tbody=el('tbody');
 
-  const sorted=[...budgetItems].sort((a,b)=>(a.category||'').localeCompare(b.category||'')||((Number(b.anticipatedCost)||0)-(Number(a.anticipatedCost)||0)));
+  let _draggingBudgetId=null;
+  let _budgetCustomOrder=[];try{_budgetCustomOrder=JSON.parse(localStorage.getItem('wvmo_budget_order_v1')||'[]');}catch(_e){}
+  const sorted=[...budgetItems].sort((a,b)=>{const ai=_budgetCustomOrder.indexOf(a.id),bi2=_budgetCustomOrder.indexOf(b.id);if(ai>=0&&bi2>=0)return ai-bi2;if(ai>=0)return-1;if(bi2>=0)return 1;return(a.category||'').localeCompare(b.category||'')||((Number(b.anticipatedCost)||0)-(Number(a.anticipatedCost)||0));});
   sorted.forEach(pr=>{
     const bdg=Number(pr.anticipatedCost)||0;
     const sp=effectiveSpent(pr);
@@ -1897,9 +1899,16 @@ function viewPropertyWVMO(){
     /* main row */
     const mainRow=el('tr',{
       style:'border-bottom:1px solid var(--line-2);cursor:pointer',
-      ondragover:e=>{e.preventDefault();mainRow.style.background='var(--wheat-soft)';},
-      ondragleave:()=>{mainRow.style.background='';},
-      ondrop:async e=>{e.preventDefault();mainRow.style.background='';const gid=e.dataTransfer.getData('glId');if(!gid)return;const g=S.gl.find(x=>x.id===gid||String(x.id)===gid);if(!g){toast('GL line not found');return;}g.linkedProjectId=pr.id;await linkGl(g,'GL assigned · '+pr.name);}
+      ondragover:e=>{e.preventDefault();if(_draggingBudgetId&&_draggingBudgetId!==pr.id){mainRow.style.background='var(--panel-2)';mainRow.style.boxShadow='inset 0 2px 0 var(--green)';}else if(!_draggingBudgetId){mainRow.style.background='var(--wheat-soft)';}},
+      ondragleave:()=>{mainRow.style.background='';mainRow.style.boxShadow='';},
+      ondrop:async e=>{
+        e.preventDefault();mainRow.style.background='';mainRow.style.boxShadow='';
+        const bid=e.dataTransfer.getData('budgetRowId');
+        if(bid&&bid!==pr.id){const ids=sorted.map(x=>x.id);const fi=ids.indexOf(bid),ti=ids.indexOf(pr.id);if(fi>=0&&ti>=0){ids.splice(fi,1);ids.splice(ti,0,bid);}localStorage.setItem('wvmo_budget_order_v1',JSON.stringify(ids));render();return;}
+        const gid=e.dataTransfer.getData('glId');if(!gid)return;
+        const g=S.gl.find(x=>x.id===gid||String(x.id)===gid);if(!g){toast('GL line not found');return;}
+        g.linkedProjectId=pr.id;await linkGl(g,'GL assigned · '+pr.name);
+      }
     });
 
     /* mini bar inside Description cell */
@@ -1912,8 +1921,27 @@ function viewPropertyWVMO(){
     const toggleBtn=el('button',{class:'btn ghost sm',style:'padding:2px 6px;font-size:11px',onclick:e=>{e.stopPropagation();toggle();}},lgs.length?`▼ ${lgs.length} charged`:'▼');
 
     mainRow.append(
-      el('td',{style:'padding:10px 12px;vertical-align:middle'},
-        el('div',{style:'font-size:11.5px;color:var(--ink-2);line-height:1.3'},pr.category||'—')),
+      (()=>{
+        const acctTd=el('td',{style:'padding:6px 12px;vertical-align:middle'});
+        const rebuildAcct=async(newVal)=>{
+          if(newVal!==undefined&&newVal.trim()&&newVal.trim()!==pr.category){pr.category=newVal.trim();await saveProject(pr,'Account updated');}
+          acctTd.innerHTML='';
+          const handle=el('span',{draggable:'true',title:'Drag to reorder',style:'cursor:grab;color:var(--ink-3);font-size:14px;margin-right:5px;user-select:none;flex-shrink:0;opacity:.5',
+            ondragstart:e=>{e.stopPropagation();e.dataTransfer.setData('budgetRowId',pr.id);e.dataTransfer.effectAllowed='move';_draggingBudgetId=pr.id;handle.style.opacity='1';},
+            ondragend:()=>{_draggingBudgetId=null;handle.style.opacity='.5';}
+          },'⠿');
+          const wrap=el('div',{style:'display:flex;align-items:center'});
+          const lbl=el('span',{style:'font-size:11.5px;color:var(--ink-2);cursor:text;line-height:1.3',title:'Click to edit account code'},pr.category||'—');
+          lbl.onclick=e=>{e.stopPropagation();
+            const inp=el('input',{type:'text',value:pr.category||'',style:'width:145px;font-size:11.5px;padding:2px 6px;border:1px solid var(--green);border-radius:4px;background:var(--panel);font-family:inherit;outline:none'});
+            inp.onblur=()=>rebuildAcct(inp.value);
+            inp.onkeydown=ke=>{if(ke.key==='Enter')inp.blur();if(ke.key==='Escape'){inp.value=pr.category||'';inp.blur();}};
+            wrap.innerHTML='';wrap.append(handle,inp);inp.focus();inp.select();
+          };
+          wrap.append(handle,lbl);acctTd.append(wrap);
+        };
+        rebuildAcct();return acctTd;
+      })(),
       el('td',{style:'padding:10px 12px;vertical-align:middle'},
         el('div',{style:'display:flex;gap:8px;align-items:center;flex-wrap:wrap'},
           el('span',{style:'font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline dotted',onclick:()=>openProject(pr.id)},pr.name||'(untitled)'),
@@ -1934,42 +1962,53 @@ function viewPropertyWVMO(){
     function redrawDetail(){
       detailCell.innerHTML='';
       const lgs2=linkedFor(pr);
-      /* assigned GL chips */
+      /* ── layout: two columns ── */
+      const layout=el('div',{style:'display:grid;grid-template-columns:1fr 280px;gap:14px;align-items:start'});
+      const leftCol=el('div');
+      const rightCol=el('div',{style:'border-left:1px solid var(--line-2);padding-left:14px'});
+      /* ── left: GL chips ── */
       if(lgs2.length){
+        const secLabel=el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3);font-weight:700;margin-bottom:8px'},
+          `GL Charges · ${lgs2.length} line${lgs2.length===1?'':'s'} · `+fmt(lgs2.reduce((a,g)=>a+(Number(g.amount)||0),0),false));
+        leftCol.append(secLabel);
         const chipWrap=el('div',{style:'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px'});
         lgs2.forEach(g=>{
-          const chip=el('div',{style:'display:inline-flex;align-items:center;gap:6px;background:var(--green-soft);border:1px solid var(--green);border-radius:6px;padding:4px 10px;font-size:12px'});
-          chip.append(
-            el('span',{class:'mono',style:'font-weight:600'},fmt(g.amount,false)),
-            el('span',{style:'color:var(--ink-2)'},g.vendor?(' · '+g.vendor.slice(0,24)):''),
-            g.date?el('span',{style:'color:var(--ink-3)'},' · '+g.date):'');
-          /* Move button */
-          const moveBtn=el('button',{class:'btn ghost sm',style:'padding:2px 6px;font-size:11px',onclick:e=>{e.stopPropagation();showMoveMenu(g,chip,pr,redrawDetail);}
-          },'Move ▾');
-          chip.append(moveBtn);
-          /* Unlink */
-          chip.append(el('button',{class:'btn sm',style:'padding:2px 7px;font-size:11px;color:var(--rust);border-color:var(--rust-soft)',title:'Return to unassigned GL pool',onclick:async()=>{g.linkedProjectId=null;await linkGl(g,'GL returned to pool');redrawDetail();toggleBtn.textContent=linkedFor(pr).length?`▼ ${linkedFor(pr).length} charged`:'▼';}},'↩ Pool'));
+          const chip=el('div',{style:'display:flex;flex-direction:column;background:var(--green-soft);border:1px solid rgba(46,125,87,.3);border-radius:8px;padding:6px 10px;font-size:12px;min-width:160px;max-width:260px;gap:2px'});
+          const topRow=el('div',{style:'display:flex;align-items:center;gap:6px;flex-wrap:wrap'});
+          topRow.append(
+            el('span',{class:'mono',style:'font-weight:700;color:var(--green);font-size:13px'},fmt(g.amount,false)),
+            el('span',{style:'color:var(--ink-1);font-weight:500'},g.vendor?g.vendor.slice(0,22):''));
+          if(g.date)topRow.append(el('span',{style:'color:var(--ink-3);font-size:11px;margin-left:auto'},g.date));
+          chip.append(topRow);
+          if(g.remarks)chip.append(el('div',{style:'font-size:11px;color:var(--ink-2);font-style:italic;border-top:1px solid rgba(46,125,87,.15);padding-top:4px;margin-top:2px'},'"'+g.remarks.slice(0,65)+(g.remarks.length>65?'…':'')+'"'));
+          const actRow=el('div',{style:'display:flex;gap:5px;margin-top:4px;padding-top:4px;border-top:1px solid rgba(46,125,87,.12)'});
+          const moveBtn=el('button',{class:'btn ghost sm',style:'font-size:11px',onclick:e=>{e.stopPropagation();showMoveMenu(g,chip,pr,redrawDetail);}},'↔ Move');
+          actRow.append(moveBtn);
+          actRow.append(el('button',{class:'btn sm',style:'font-size:11px;color:var(--rust);border-color:rgba(180,69,47,.3)',title:'Return to unassigned GL pool',onclick:async()=>{g.linkedProjectId=null;await linkGl(g,'GL returned to pool');redrawDetail();toggleBtn.textContent=linkedFor(pr).length?`▼ ${linkedFor(pr).length} charged`:'▼';}},'↩ Pool'));
+          chip.append(actRow);
           chipWrap.append(chip);
         });
-        detailCell.append(chipWrap);
+        leftCol.append(chipWrap);
       }
       /* drop zone */
       const dz=el('div',{
-        style:'border:2px dashed var(--line);border-radius:6px;padding:8px 14px;font-size:12px;color:var(--ink-3);text-align:center;transition:background .15s,border-color .15s',
-        ondragover:e=>{e.preventDefault();dz.style.background='var(--wheat-soft)';dz.style.borderColor='var(--wheat)';},
-        ondragleave:()=>{dz.style.background='';dz.style.borderColor='var(--line)';},
-        ondrop:async e=>{e.preventDefault();dz.style.background='';dz.style.borderColor='var(--line)';const gid=e.dataTransfer.getData('glId');if(!gid)return;const g=S.gl.find(x=>x.id===gid||String(x.id)===gid);if(!g){toast('GL line not found');return;}g.linkedProjectId=pr.id;await linkGl(g,'GL assigned · '+pr.name);}
-      },'↓ Drop GL lines here to assign spend');
-      detailCell.append(dz);
-      /* inline notes */
-      const notesWrap=el('div',{style:'margin-top:10px;border-top:1px solid var(--line-2);padding-top:8px'});
-      notesWrap.append(el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600;margin-bottom:4px'},'Notes'));
-      const noteTa=el('textarea',{style:'width:100%;min-height:54px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;font-size:12px;background:var(--panel-2);resize:vertical;box-sizing:border-box',
+        style:'border:2px dashed var(--line);border-radius:8px;padding:10px 16px;font-size:12px;color:var(--ink-3);text-align:center;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:6px',
+        ondragover:e=>{if(!_draggingBudgetId){e.preventDefault();dz.style.background='var(--wheat-soft)';dz.style.borderColor='var(--wheat)';dz.style.color='var(--wheat)';}},
+        ondragleave:()=>{dz.style.background='';dz.style.borderColor='var(--line)';dz.style.color='var(--ink-3)';},
+        ondrop:async e=>{e.preventDefault();dz.style.background='';dz.style.borderColor='var(--line)';dz.style.color='var(--ink-3)';const gid=e.dataTransfer.getData('glId');if(!gid)return;const g=S.gl.find(x=>x.id===gid||String(x.id)===gid);if(!g){toast('GL line not found');return;}g.linkedProjectId=pr.id;await linkGl(g,'GL assigned · '+pr.name);}
+      },
+        el('span',{style:'font-size:14px'},'⬇'),
+        el('span',{},'Drop GL lines here to assign spend'));
+      leftCol.append(dz);
+      /* ── right: notes ── */
+      rightCol.append(el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3);font-weight:700;margin-bottom:6px'},'📝 Notes'));
+      const noteTa=el('textarea',{style:'width:100%;min-height:90px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-size:12px;background:var(--panel);resize:vertical;box-sizing:border-box;line-height:1.5;color:var(--ink-1)',
         placeholder:'Status, comments, follow-up…',
         onblur:async()=>{pr.notes=noteTa.value;await saveProject(pr,'Notes saved');}});
       noteTa.value=pr.notes||'';
-      notesWrap.append(noteTa);
-      detailCell.append(notesWrap);
+      rightCol.append(noteTa);
+      layout.append(leftCol,rightCol);
+      detailCell.append(layout);
     }
     redrawDetail();
     detailRow.append(detailCell);
@@ -2087,9 +2126,10 @@ function viewPropertyWVMO(){
       });
       glRow.append(
         el('td',{style:'padding:4px 8px;width:32px'},cb),
-        td(el('div',{style:'font-size:12px;max-width:180px'},
+        td(el('div',{style:'font-size:12px;max-width:220px'},
           el('div',{style:'font-weight:500'},g.vendor||g.category||'—'),
-          el('div',{style:'color:var(--ink-3);font-size:11px'},(g.date||'')+(g.category?' · '+g.category.slice(0,18):'')))),
+          el('div',{style:'color:var(--ink-3);font-size:11px'},(g.date||'')+(g.category?' · '+g.category.slice(0,20):'')),
+          g.remarks?el('div',{style:'font-size:11px;color:var(--ink-2);font-style:italic;border-left:2px solid var(--line);padding-left:5px;margin-top:3px'},'"'+g.remarks.slice(0,55)+(g.remarks.length>55?'…':'')+'"'):null)),
         tdn(g.amount,1),
         td(linked
           ?el('span',{style:'font-size:11px;color:var(--green);display:flex;gap:3px;align-items:center'},
