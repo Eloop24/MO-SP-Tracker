@@ -1842,8 +1842,11 @@ function viewPropertyWVMO(){
   const totalBudget=budgetItems.reduce((a,p2)=>a+(Number(p2.anticipatedCost)||0),0);
   const totalSpent =budgetItems.reduce((a,p2)=>a+effectiveSpent(p2),0);
   const totalContracted=budgetItems.reduce((a,p2)=>a+contractedTotal(p2),0);
-  const totalVar   =totalSpent+totalContracted-totalBudget;  // negative = available, positive = over
-  const varColor   =totalVar>500?'var(--rust)':totalVar<-500?'var(--green)':'var(--ink)';
+  // GL spend not linked to any budget item — reduces available variance
+  const unbudgetedGlSpend=allGls.filter(g=>Number(g.amount)>0&&!budgetItems.some(bi=>bi.id===g.linkedProjectId)).reduce((a,g)=>a+(Number(g.amount)||0),0);
+  const totalVar   =totalSpent+totalContracted-totalBudget;  // budgeted items only
+  const netVar     =totalVar+unbudgetedGlSpend;              // includes unbudgeted GL
+  const varColor   =netVar>500?'var(--rust)':netVar<-500?'var(--green)':'var(--ink)';
 
   const bp=el('div',{class:'panel',style:'overflow:visible'});
   async function addBudgetItem(){
@@ -1865,10 +1868,13 @@ function viewPropertyWVMO(){
   const strip=el('div',{style:'display:flex;border-bottom:1px solid var(--line-2)'});
   const kk=(lbl,val,color)=>{const d=el('div',{style:'flex:1;padding:10px 16px;text-align:center;border-right:1px solid var(--line-2)'});d.append(el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600'},lbl));d.append(el('div',{class:'mono',style:'font-size:16px;font-weight:700;margin-top:2px'+(color?';color:'+color:'')},fmt(val)));return d;};
   const varStrip=el('div',{style:'flex:1;padding:10px 16px;text-align:center'});
-  varStrip.append(el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600'},'Variance'));
-  varStrip.append(el('div',{class:'mono',style:`font-size:16px;font-weight:700;margin-top:2px;color:${varColor}`},(totalVar>=0?'+':'')+fmt(totalVar,false)));
-  varStrip.append(el('div',{style:'font-size:11px;color:var(--ink-3);margin-top:1px'},totalVar<-100?fmt(Math.abs(totalVar),false)+' available':totalVar>100?'over budget':'on budget'));
-  strip.append(kk('Total Budget',totalBudget),kk('GL Spent',totalSpent),kk('Under Contract',totalContracted),varStrip);
+  varStrip.append(el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600'},'Net Variance'));
+  varStrip.append(el('div',{class:'mono',style:`font-size:16px;font-weight:700;margin-top:2px;color:${varColor}`},(netVar>=0?'+':'')+fmt(netVar,false)));
+  varStrip.append(el('div',{style:'font-size:11px;color:var(--ink-3);margin-top:1px'},netVar<-100?fmt(Math.abs(netVar),false)+' available':netVar>100?'over budget':'on budget'));
+  strip.append(kk('Total Budget',totalBudget),kk('GL Spent',totalSpent),
+    unbudgetedGlSpend?kk('Unbudgeted GL',unbudgetedGlSpend,'var(--amber)'):kk('Under Contract',totalContracted),
+    unbudgetedGlSpend?kk('Under Contract',totalContracted):null,
+    varStrip);
   bp.append(strip);
 
   /* table header */
@@ -2017,12 +2023,18 @@ function viewPropertyWVMO(){
 
   /* totals footer */
   const tfoot=el('tfoot',{});
+  if(unbudgetedGlSpend){
+    tfoot.append(el('tr',{style:'background:var(--canvas);border-top:1px solid var(--line-2);font-style:italic;color:var(--amber)'},
+      el('td',{colspan:'2',style:'padding:7px 16px;font-size:12px'},'⚠ Unbudgeted GL spend'),
+      el('td',{style:'padding:7px 16px;text-align:right;font-family:var(--mono);font-size:12px',colspan:'2'},'+'+fmt(unbudgetedGlSpend,false)),
+      el('td',{style:'padding:7px 16px;text-align:right;font-family:var(--mono);font-size:12px;color:var(--amber)'},'+'+fmt(unbudgetedGlSpend,false)+' to variance')));
+  }
   tfoot.append(el('tr',{style:'background:var(--panel-2);border-top:2px solid var(--line);font-weight:700'},
     el('td',{colspan:'2',style:'padding:10px 16px;font-size:13px'},'Total'),
     el('td',{style:'padding:10px 16px;text-align:right;font-family:var(--mono)'},fmt(totalBudget)),
     el('td',{style:'padding:10px 16px;text-align:right;font-family:var(--mono)'},totalSpent?fmt(totalSpent):'—'),
     el('td',{style:'padding:10px 16px;text-align:right;font-family:var(--mono);color:var(--wheat)'},totalContracted?fmt(totalContracted):'—'),
-    el('td',{style:`padding:10px 16px;text-align:right;font-family:var(--mono);color:${varColor}`},(totalVar>=0?'+':'')+fmt(totalVar,false))));
+    el('td',{style:`padding:10px 16px;text-align:right;font-family:var(--mono);color:${varColor}`},(netVar>=0?'+':'')+fmt(netVar,false))));
   tbl.append(tbody,tfoot); bp.append(tbl);
   /* ── SECTION 3: GL lines (draggable, sidebar) ──────── */
   const gp=el('div',{class:'panel',style:'overflow:hidden;display:flex;flex-direction:column'});
@@ -2059,13 +2071,19 @@ function viewPropertyWVMO(){
     else toast(`Matched ${matched} GL line${matched===1?'':'s'}`);
   }
   let glShowUnassignedOnly=false;
+  let glCollapsed=false;
+  let glShowContra=false;
+  const contraLines=allGls.filter(g=>Number(g.amount)<=0);
+  const positiveGls=allGls.filter(g=>Number(g.amount)>0);
   const glChecked=new Set(); // GL line IDs checked for batch match
   const glHeader=()=>{
     const checkedCount=glChecked.size;
     const h=el('div',{class:'ph'});
     h.append(
-      el('h3',{},'General Ledger'),el('div',{class:'sp'}),
-      el('span',{class:'chip',style:'cursor:default'},`${allGls.length} lines`),
+      el('h3',{style:'cursor:pointer;user-select:none',title:glCollapsed?'Expand GL section':'Collapse GL section',onclick:()=>{glCollapsed=!glCollapsed;rebuildGLTable();}},
+        (glCollapsed?'▶':'▼')+' General Ledger'),
+      el('div',{class:'sp'}),
+      el('span',{class:'chip',style:'cursor:default'},`${positiveGls.length} lines`+(contraLines.length?' + '+contraLines.length+' contra':'')),
       el('span',{class:'chip',style:'cursor:default'},fmt(glSpent)),
       unassigned.length
         ?el('button',{class:'btn'+(glShowUnassignedOnly?' accent':' ghost')+' sm',style:'font-size:12px',
@@ -2073,6 +2091,11 @@ function viewPropertyWVMO(){
             onclick:()=>{glShowUnassignedOnly=!glShowUnassignedOnly;rebuildGLTable();}},
             unassigned.length+' unassigned')
         :el('span',{class:'chip done'},'all assigned'),
+      contraLines.length?el('button',{class:'btn ghost sm',style:'font-size:11px;color:var(--ink-3)',
+          title:glShowContra?'Hide contra/credit entries':'Show contra/credit entries ('+contraLines.length+')',
+          onclick:()=>{glShowContra=!glShowContra;rebuildGLTable();}},
+          glShowContra?'hide contra':'contra ('+contraLines.length+')')
+        :null,
       checkedCount
         ?el('button',{class:'btn accent sm',style:'margin-left:6px',
             onclick:async()=>{
@@ -2096,13 +2119,15 @@ function viewPropertyWVMO(){
     if(_glTableEl)_glTableEl.remove();
     /* rebuild header chip state */
     const newH=glHeader(); glHeaderEl.replaceWith(newH);
+    if(glCollapsed){_glTableEl=el('div');gp.append(_glTableEl);return;}
     if(allGls.length){
     const hint=el('div',{id:'_glHint',style:'padding:6px 16px;font-size:11.5px;color:var(--ink-3);border-bottom:1px solid var(--line-2);background:var(--panel-2)'},'⠿  Drag rows onto a budget item or drop on a row in the SP Budget table');
     const t=el('table',{class:'tbl'});
     /* "select all unassigned" checkbox in header */
     const allCb=el('input',{type:'checkbox',title:'Select all unassigned',style:'cursor:pointer'});
     allCb.onchange=()=>{
-      const displayGls2=glShowUnassignedOnly?unassigned:allGls;
+      const baseGls2=glShowContra?allGls:positiveGls;
+      const displayGls2=glShowUnassignedOnly?unassigned:baseGls2;
       displayGls2.filter(g=>!g.linkedProjectId).forEach(g=>{
         if(allCb.checked)glChecked.add(String(g.id)); else glChecked.delete(String(g.id));
       });
@@ -2110,7 +2135,8 @@ function viewPropertyWVMO(){
     };
     t.append(el('thead',{},tr(el('th',{style:'width:32px;padding:6px 8px'},allCb),th('Vendor / description'),th('Amount','r'),th('Assigned to'))));
     const tbb=el('tbody');
-    const displayGls=glShowUnassignedOnly?unassigned:allGls;
+    const baseGls=glShowContra?allGls:positiveGls;
+    const displayGls=glShowUnassignedOnly?unassigned:baseGls;
     displayGls.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
     displayGls.forEach(g=>{
       const linked=g.linkedProjectId?S.projects.find(x=>x.id===g.linkedProjectId):null;
