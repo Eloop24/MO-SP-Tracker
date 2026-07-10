@@ -1682,7 +1682,7 @@ function viewProperty(){
   gp.style.maxHeight='none';
   const budgetGlRow=el('div',{style:'display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start'});
   budgetGlRow.append(bp,gp);
-  body.append(cashPanel, pj, budgetGlRow);
+  body.append(pj, autoBar, budgetGlRow);
   return {bar,body};
 }
 
@@ -1719,6 +1719,7 @@ function viewPropertyWVMO(){
      hstat('Spent to date',fmt(spent),'none','posted per GL'),
      hstat('Remaining',fmt(remaining),remTone,pct(budget?spent/budget:0)+' used'),
      hstat('Projected cash',fmt(cm.projectedCash),projTone,'after committed'),
+     hstat('Outstanding',cm.outstandingTotal?fmt(cm.outstandingTotal):'—',cm.outstandingTotal>0?'warn':'none','approved, not yet paid'),
      hstat('Cash / door',cpd==null?'—':fmt(cpd),cpdTone,p.units?`${p.units} units`:'no unit count'),
      hstat('Cash / yr of loan',cashPerYr==null?'—':fmt(cashPerYr),'none',loanYrs!=null&&loanYrs>0?`${loanYrs.toFixed(1)} yrs to ${c.loanDue}`:'no loan maturity')]);
 
@@ -1755,15 +1756,18 @@ function viewPropertyWVMO(){
 
   /* ── ACTIVE PROJECTS + BUDGET TABLE + GL (full width) ─── */
   const allGls=S.gl.filter(g=>g.property===code);
-  const budgetItems=projForProp(code).filter(p2=>!p2.inHouse);
+  const budgetItems=projForProp(code).filter(p2=>p2.isBudgetItem);       // the 11 seeded line items
+  const activeProjs=projForProp(code).filter(p2=>!p2.isBudgetItem&&!p2.inHouse); // user contracts
 
-  /* helper: GL lines linked to a project */
+  /* helpers */
   const linkedFor=pr=>allGls.filter(g=>g.linkedProjectId===pr.id);
   const glSum=pr=>linkedFor(pr).reduce((a,g)=>a+(Number(g.amount)||0),0);
   const effectiveSpent=pr=>pr.actualCost!=null?Number(pr.actualCost):glSum(pr);
+  const contractedFor=pr=>activeProjs.filter(ap=>ap.linkedBudgetItemId===pr.id);
+  const contractedTotal=pr=>contractedFor(pr).reduce((a,ap)=>a+(Number(ap.anticipatedCost)||0),0);
 
   /* ── SECTION 1: Active Projects ──────────────────── */
-  const projs=projForProp(code).filter(p2=>inDateRange(p2,PFILT));
+  const projs=activeProjs.filter(p2=>inDateRange(p2,PFILT));
   const pj=el('div',{class:'panel'});
   const counts={}; PHASES.forEach(ph=>counts[ph.key]=projs.filter(p2=>phase(p2)===ph.key).length);
   pj.append(el('div',{class:'ph'},el('h3',{},'Active Projects'),el('div',{class:'sp'}),el('span',{class:'chip'},`${projs.length} total`),
@@ -1778,12 +1782,13 @@ function viewPropertyWVMO(){
     const ih=isInHouse(pr);
     const r=el('div',{class:'clickrow proj-row',style:'padding:10px 16px;border-bottom:1px solid var(--line-2)',onclick:()=>openProject(pr.id)});
     r.append(
-      el('div',{style:'display:flex;gap:8px;align-items:center;margin-bottom:5px'},
+      el('div',{style:'display:flex;gap:8px;align-items:center;margin-bottom:5px;flex-wrap:wrap'},
         el('button',{class:'pinbtn'+(pr.pinned?' on':''),onclick:e=>{e.stopPropagation();pr.pinned=!pr.pinned;saveProject(pr,pr.pinned?'Pinned':'Unpinned');}},'📌'),
         el('strong',{style:'font-size:13px;flex:1;min-width:0'},pr.name),
         ih?el('span',{class:'chip ih'},'In-house'):null,
         el('span',{style:'font-size:11px;color:var(--ink-3)'},pr.category),
-        el('span',{class:'mono',style:'font-size:12px;font-weight:600'},fmt(ih?ihTotal(pr):(pr.actualCost!=null?pr.actualCost:pr.anticipatedCost),false))),
+        el('span',{class:'mono',style:'font-size:12px;font-weight:600'},fmt(ih?ihTotal(pr):(pr.actualCost!=null?pr.actualCost:pr.anticipatedCost),false)),
+        (()=>{const sel=el('select',{style:'font-size:11px;padding:2px 6px;border:1px solid var(--line);border-radius:4px;background:var(--panel-2);color:var(--ink-2);max-width:180px',title:'Assign to SP Budget item',onclick:e=>e.stopPropagation(),onchange:async e=>{e.stopPropagation();pr.linkedBudgetItemId=e.target.value||null;await saveProject(pr,'Budget item assigned');}});sel.append(el('option',{value:''},'— SP Budget item —'));budgetItems.forEach(bi=>sel.append(el('option',{value:bi.id,...(pr.linkedBudgetItemId===bi.id?{selected:'true'}:{})},bi.name)));return sel;})()),
       ih?progressEl(pr):trackEl(pr));
     return r;
   }
@@ -1803,7 +1808,8 @@ function viewPropertyWVMO(){
   /* ── SECTION 2: SP Budget Table ─────────────────── */
   const totalBudget=budgetItems.reduce((a,p2)=>a+(Number(p2.anticipatedCost)||0),0);
   const totalSpent =budgetItems.reduce((a,p2)=>a+effectiveSpent(p2),0);
-  const totalVar   =totalSpent-totalBudget;
+  const totalContracted=budgetItems.reduce((a,p2)=>a+contractedTotal(p2),0);
+  const totalVar   =totalSpent+totalContracted-totalBudget;  // negative = available, positive = over
   const varColor   =totalVar>500?'var(--rust)':totalVar<-500?'var(--green)':'var(--ink)';
 
   const bp=el('div',{class:'panel',style:'overflow:visible'});
@@ -1819,7 +1825,7 @@ function viewPropertyWVMO(){
   varStrip.append(el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600'},'Variance'));
   varStrip.append(el('div',{class:'mono',style:`font-size:16px;font-weight:700;margin-top:2px;color:${varColor}`},(totalVar>=0?'+':'')+fmt(totalVar,false)));
   varStrip.append(el('div',{style:'font-size:11px;color:var(--ink-3);margin-top:1px'},totalVar<-100?fmt(Math.abs(totalVar),false)+' available':totalVar>100?'over budget':'on budget'));
-  strip.append(kk('Total Budget',totalBudget),kk('Total GL Spent',totalSpent),varStrip);
+  strip.append(kk('Total Budget',totalBudget),kk('GL Spent',totalSpent),kk('Under Contract',totalContracted),varStrip);
   bp.append(strip);
 
   /* table header */
@@ -1829,6 +1835,7 @@ function viewPropertyWVMO(){
     el('th',{style:'padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600'},'Description'),
     el('th',{style:'padding:8px 16px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600;white-space:nowrap'},'Budget'),
     el('th',{style:'padding:8px 16px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600;white-space:nowrap'},'GL Spent'),
+    el('th',{style:'padding:8px 16px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600;white-space:nowrap'},'Under Contract'),
     el('th',{style:'padding:8px 16px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600'},'Variance'))));
   const tbody=el('tbody');
 
@@ -1836,7 +1843,8 @@ function viewPropertyWVMO(){
   sorted.forEach(pr=>{
     const bdg=Number(pr.anticipatedCost)||0;
     const sp=effectiveSpent(pr);
-    const vr=sp-bdg;
+    const ct=contractedTotal(pr);
+    const vr=sp+ct-bdg;  // negative = budget still available
     const vrColor=bdg?(vr>0?'var(--rust)':'var(--green)'):'var(--ink-3)';
     const lgs=linkedFor(pr);
     const isOver=bdg>0&&sp>bdg;
@@ -1871,12 +1879,13 @@ function viewPropertyWVMO(){
         pr.notes?el('div',{style:'font-size:11px;color:var(--ink-3);margin-top:3px'},pr.notes.slice(0,80)+(pr.notes.length>80?'…':'')):null),
       el('td',{style:'padding:10px 16px;text-align:right;font-family:var(--mono);font-weight:700'},bdg?fmt(bdg):'—'),
       el('td',{style:'padding:10px 16px;text-align:right;font-family:var(--mono);font-weight:700'},sp?fmt(sp):'—'),
+      el('td',{style:'padding:10px 16px;text-align:right;font-family:var(--mono);font-weight:700;color:var(--wheat)'},ct?fmt(ct):'—'),
       el('td',{style:`padding:10px 16px;text-align:right;font-family:var(--mono);font-weight:700;color:${vrColor}`},bdg?(vr>=0?'+':'')+fmt(vr,false):'—'));
     tbody.append(mainRow);
 
     /* detail row (GL charges + drop zone) */
     const detailRow=el('tr',{style:'display:none;background:var(--panel-2);border-bottom:2px solid var(--line)'});
-    const detailCell=el('td',{colspan:'5',style:'padding:10px 16px'});
+    const detailCell=el('td',{colspan:'6',style:'padding:10px 16px'});
 
     function redrawDetail(){
       detailCell.innerHTML='';
@@ -1920,6 +1929,7 @@ function viewPropertyWVMO(){
     el('td',{colspan:'2',style:'padding:10px 16px;font-size:13px'},'Total'),
     el('td',{style:'padding:10px 16px;text-align:right;font-family:var(--mono)'},fmt(totalBudget)),
     el('td',{style:'padding:10px 16px;text-align:right;font-family:var(--mono)'},totalSpent?fmt(totalSpent):'—'),
+    el('td',{style:'padding:10px 16px;text-align:right;font-family:var(--mono);color:var(--wheat)'},totalContracted?fmt(totalContracted):'—'),
     el('td',{style:`padding:10px 16px;text-align:right;font-family:var(--mono);color:${varColor}`},(totalVar>=0?'+':'')+fmt(totalVar,false))));
   tbl.append(tbody,tfoot); bp.append(tbl);
   /* ── SECTION 3: GL lines (draggable, sidebar) ──────── */
@@ -1943,6 +1953,11 @@ function viewPropertyWVMO(){
     el('span',{class:'chip'},fmt(glSpent)),
     unassigned.length?el('span',{class:'chip hold'},unassigned.length+' unassigned'):el('span',{class:'chip done'},'all assigned'),
     el('button',{class:'btn sm',style:'margin-left:6px',title:'Auto-link unassigned GL lines to budget items by GL account code',onclick:autoMatchGL},'⚡ Auto-match')));
+  /* prominent auto-match action bar */
+  const autoBar=el('div',{style:'display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--panel);border:1px solid var(--line);border-radius:8px;margin-bottom:0'});
+  autoBar.append(
+    el('span',{style:'font-size:13px;color:var(--ink-2);flex:1'},'Auto-match GL lines to budget items by account code — assigns unmatched lines in one click.'),
+    el('button',{class:'btn accent',style:'white-space:nowrap',onclick:autoMatchGL},'⚡ Auto-match GL'));
   if(allGls.length){
     gp.append(el('div',{style:'padding:6px 16px;font-size:11.5px;color:var(--ink-3);border-bottom:1px solid var(--line-2);background:var(--panel-2)'},'⠿  Drag rows onto a budget item above, or drop directly on a row'));
     const t=el('table',{class:'tbl'});
@@ -1983,7 +1998,7 @@ function viewPropertyWVMO(){
   gp.style.maxHeight='none';
   const budgetGlRow=el('div',{style:'display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start'});
   budgetGlRow.append(bp,gp);
-  body.append(cashPanel, pj, budgetGlRow);
+  body.append(pj, autoBar, budgetGlRow);
   return {bar,body};
 }
 

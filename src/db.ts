@@ -77,6 +77,8 @@ export function rowToProject(r: any, bids: Bid[] = [], notes: ProgressNote[] = [
     amountCompleted: r.amount_completed,
     noContract: !!r.no_contract,
     noContractSet: !!r.no_contract_set,
+    isBudgetItem: !!r.is_budget_item,
+    linkedBudgetItemId: r.linked_budget_item_id ?? null,
     contractFileKey: r.contract_file_key ?? null,
     contractFileName: r.contract_file_name ?? null,
     lienFileKey: r.lien_file_key ?? null,
