@@ -398,15 +398,42 @@ api.post('/import/gl/confirm', async (req, res) => {
     const assignments: Record<string,string> = {};
     for (const r of saved.rows) assignments[r.control] = r.linked_project_id;
 
+    // Build category → project map for auto-matching new unassigned lines.
+    // If multiple projects share a category, prefer the one with the most budget remaining.
+    const projRows = await c.query(
+      `select p.id, p.property_code, p.category,
+              coalesce(p.anticipated_cost,0) as budget,
+              coalesce(sum(g2.amount),0) as gl_spent
+       from projects p
+       left join gl_lines g2 on g2.linked_project_id = p.id
+       where p.in_house = false and p.category is not null and p.category <> ''
+       group by p.id, p.property_code, p.category, p.anticipated_cost
+       order by (coalesce(p.anticipated_cost,0) - coalesce(sum(g2.amount),0)) desc`
+    );
+    // key = "PROPERTY|category" → best-fit project id (first = most budget remaining)
+    const catMap: Record<string,string> = {};
+    for (const r of projRows.rows) {
+      const key = r.property_code + '|' + r.category;
+      if (!catMap[key]) catMap[key] = r.id;
+    }
+
     await c.query('truncate gl_lines');
+    let autoMatched = 0;
     for (const g of lines) {
-      const lp = (g.control && assignments[g.control]) ? assignments[g.control] : null;
+      // 1. Saved manual assignment by control# takes priority
+      // 2. Fall back to category auto-match for new unassigned lines
+      let lp = (g.control && assignments[g.control]) ? assignments[g.control] : null;
+      if (!lp && g.category) {
+        const catKey = g.property + '|' + g.category;
+        if (catMap[catKey]) { lp = catMap[catKey]; autoMatched++; }
+      }
       await c.query(
         `insert into gl_lines(id,property_code,account,category,date,vendor,control,amount,remarks,linked_project_id,partial)
          values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,false)`,
         [g.id, g.property, g.account || null, g.category || null, dnull(g.date), g.vendor || null, g.control || null, Number(g.amount) || 0, g.remarks || null, lp]
       );
     }
+    console.log(`GL import: ${lines.length} lines, ${autoMatched} auto-matched by category`);
     if (period) await c.query('update app_meta set gl_period=$1 where id=1', [period]);
   });
   pending.delete(req.body.token);

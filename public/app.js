@@ -1895,7 +1895,7 @@ function viewPropertyWVMO(){
           },'Move ▾');
           chip.append(moveBtn);
           /* Unlink */
-          chip.append(el('button',{class:'btn ghost sm',style:'padding:0 5px;font-size:12px;color:var(--rust)',onclick:async()=>{g.linkedProjectId=null;await linkGl(g,'GL unlinked');redrawDetail();toggleBtn.textContent=lgs.length?`▼ ${lgs.length} charged`:'▼';}},'✕'));
+          chip.append(el('button',{class:'btn sm',style:'padding:2px 7px;font-size:11px;color:var(--rust);border-color:var(--rust-soft)',title:'Return to unassigned GL pool',onclick:async()=>{g.linkedProjectId=null;await linkGl(g,'GL returned to pool');redrawDetail();toggleBtn.textContent=linkedFor(pr).length?`▼ ${linkedFor(pr).length} charged`:'▼';}},'↩ Pool'));
           chipWrap.append(chip);
         });
         detailCell.append(chipWrap);
@@ -1925,11 +1925,24 @@ function viewPropertyWVMO(){
   /* ── SECTION 3: GL lines (draggable, sidebar) ──────── */
   const gp=el('div',{class:'panel',style:'overflow:hidden;display:flex;flex-direction:column'});
   const unassigned=allGls.filter(g=>!g.linkedProjectId&&Number(g.amount)>0);
+  /* Auto-match unassigned GL lines to budget items by category */
+  async function autoMatchGL(){
+    const candidates=allGls.filter(g=>!g.linkedProjectId&&Number(g.amount)>0);
+    if(!candidates.length){toast('No unassigned GL lines to match');return;}
+    let matched=0;
+    for(const g of candidates){
+      const pr=budgetItems.find(p2=>p2.category&&g.category&&
+        p2.category.trim().toLowerCase()===g.category.trim().toLowerCase());
+      if(pr){g.linkedProjectId=pr.id;await linkGl(g,'Auto-matched');matched++;}
+    }
+    if(!matched) toast('No category matches found');
+  }
   gp.append(el('div',{class:'ph'},
     el('h3',{},'General Ledger'),el('div',{class:'sp'}),
     el('span',{class:'chip'},`${allGls.length} lines`),
     el('span',{class:'chip'},fmt(glSpent)),
-    unassigned.length?el('span',{class:'chip hold'},unassigned.length+' unassigned'):el('span',{class:'chip done'},'all assigned')));
+    unassigned.length?el('span',{class:'chip hold'},unassigned.length+' unassigned'):el('span',{class:'chip done'},'all assigned'),
+    unassigned.length?el('button',{class:'btn sm',style:'margin-left:6px',title:'Auto-link unassigned lines to budget items by GL account code',onclick:autoMatchGL},'⚡ Auto-match'):null));
   if(allGls.length){
     gp.append(el('div',{style:'padding:6px 16px;font-size:11.5px;color:var(--ink-3);border-bottom:1px solid var(--line-2);background:var(--panel-2)'},'⠿  Drag rows onto a budget item above, or drop directly on a row'));
     const t=el('table',{class:'tbl'});
@@ -1953,7 +1966,7 @@ function viewPropertyWVMO(){
         td(linked
           ?el('span',{style:'font-size:11px;color:var(--green);display:flex;gap:3px;align-items:center'},
               '🔗 '+linked.name.slice(0,16),
-              el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 3px',onclick:async()=>{g.linkedProjectId=null;await linkGl(g,'GL unlinked');}},'✕'))
+              el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 4px',title:'Return to pool',onclick:async()=>{g.linkedProjectId=null;await linkGl(g,'GL returned to pool');}},'↩'))
           :el('span',{style:'font-size:11px;color:var(--amber);font-style:italic'},'unassigned')));
       tbb.append(glRow);
     });
