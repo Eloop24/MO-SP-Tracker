@@ -247,10 +247,92 @@ function render(){
   root.append(app);
 }
 
+function openBudgetItem(bi,activeProjs,allGls){
+  /* Simple budget item detail — no bids/lifecycle, just title+notes+GL+linked contracts */
+  if(!bi)return;
+  activeProjs=activeProjs||S.projects.filter(p=>p.linkedBudgetItemId===bi.id&&!p.isBudgetItem);
+  allGls=allGls||S.gl.filter(g=>g.property===bi.property);
+  const linkedGls=allGls.filter(g=>g.linkedProjectId===bi.id&&Number(g.amount)>0&&!g.ignored);
+  const glSum=linkedGls.reduce((a,g)=>a+(Number(g.amount)||0),0);
+  const linkedProjects=activeProjs.filter(p=>p.linkedBudgetItemId===bi.id);
+  const budget=Number(bi.anticipatedCost)||0;
+  const spent=bi.actualCost!=null?Number(bi.actualCost):glSum;
+  const contracted=linkedProjects.reduce((a,p)=>{const d=(p.depositPaid&&p.depositAmount)?Number(p.depositAmount):0;return a+Math.max(0,(Number(p.anticipatedCost)||0)-d);},0);
+  const variance=spent+contracted-budget;
+
+  const scrim=el('div',{class:'scrim modal-center',onclick:e=>{if(e.target===scrim)scrim.remove();}});
+  const sheet=el('div',{class:'sheet',style:'max-width:540px;width:94vw'});
+  const close=()=>scrim.remove();
+
+  /* header */
+  const acctCode=(bi.category||'').match(/^(\d{4})/);
+  sheet.append(el('div',{class:'sh'},
+    acctCode?el('span',{class:'chip mono'},acctCode[1]):null,
+    el('h2',{style:'font-size:16px;flex:1'},bi.name||'Budget Item'),
+    el('button',{class:'btn ghost',onclick:close},'Close')));
+
+  const body=el('div',{class:'sb'});
+
+  /* stats row */
+  const stats=el('div',{style:'display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:16px'});
+  const st=(lbl,val,color)=>{const d=el('div',{style:'flex:1;padding:9px 12px;text-align:center;border-right:1px solid var(--line)'});d.append(el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600'},lbl),el('div',{class:'mono',style:'font-size:14px;font-weight:700;margin-top:2px'+(color?';color:'+color:'')},val));return d;};
+  const vColor=(budget||spent||contracted)?(variance>0?'var(--rust)':variance<0?'var(--green)':''):'';
+  stats.append(
+    st('Budget',budget?fmt(budget):'—'),
+    st('GL Spent',spent?fmt(spent):'—'),
+    st('Contracted',contracted?fmt(contracted):'—'),
+    st('Variance',(budget||spent||contracted)?((variance>=0?'+':'')+fmt(variance,false)):'—',vColor));
+  body.append(stats);
+
+  /* edit panel */
+  const ep=el('div',{class:'panel pad',style:'margin-bottom:14px'});
+  const fld=(lbl,node)=>{const d=el('div',{style:'margin-bottom:10px'});d.append(el('label',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600;display:block;margin-bottom:3px'},lbl),node);return d;};
+  const inpStyle='width:100%;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);font-size:13px;box-sizing:border-box';
+  const nameInp=el('input',{type:'text',value:bi.name||'',style:inpStyle+';font-weight:600',oninput:e=>bi.name=e.target.value});
+  const acctInp=el('input',{type:'text',value:bi.category||'',style:inpStyle+';font-family:var(--mono)',placeholder:'e.g. 7322 - SP BUILDING REPAIRS',oninput:e=>bi.category=e.target.value});
+  const bdgInp=el('input',{type:'number',value:bi.anticipatedCost==null?'':bi.anticipatedCost,style:inpStyle,placeholder:'0',oninput:e=>bi.anticipatedCost=e.target.value===''?null:+e.target.value});
+  const notesTa=el('textarea',{style:inpStyle+';min-height:80px;resize:vertical;line-height:1.5',placeholder:'Description of work, scope, follow-up…'});
+  notesTa.value=bi.notes||'';notesTa.oninput=e=>bi.notes=e.target.value;
+  ep.append(fld('Title',nameInp),fld('Account Code',acctInp),fld('Budgeted Amount',bdgInp),fld('Description / Notes',notesTa));
+  ep.append(el('button',{class:'btn accent',onclick:async()=>{await saveProject(bi,'Budget item saved');close();}},'Save'));
+  body.append(ep);
+
+  /* linked contracts */
+  if(linkedProjects.length){
+    const lp=el('div',{class:'panel',style:'overflow:hidden;margin-bottom:14px'});
+    lp.append(el('div',{class:'ph'},el('h3',{},'Contracts / Active Work'),el('div',{class:'sp'}),el('span',{class:'chip'},linkedProjects.length+' project'+(linkedProjects.length===1?'':'s'))));
+    linkedProjects.forEach(p=>{
+      const row=el('div',{style:'padding:9px 16px;border-bottom:1px solid var(--line-2);display:flex;align-items:center;gap:10px;cursor:pointer',onclick:()=>{close();openProject(p.id);}});
+      row.append(el('div',{style:'flex:1;min-width:0'},el('div',{style:'font-size:13px;font-weight:600'},p.name),el('div',{style:'font-size:11px;color:var(--ink-3)'},p.contractor||'no contractor'+(p.depositPaid?' · deposit paid':''))),
+        el('span',{class:'mono',style:'font-size:12px;font-weight:600'},fmt(Number(p.anticipatedCost)||0,false)));
+      lp.append(row);
+    });
+    body.append(lp);
+  }
+
+  /* GL charges */
+  if(linkedGls.length){
+    const gp2=el('div',{class:'panel',style:'overflow:hidden'});
+    gp2.append(el('div',{class:'ph'},el('h3',{},'GL Charges'),el('div',{class:'sp'}),el('span',{class:'chip'},linkedGls.length+' lines'),el('span',{class:'chip'},fmt(glSum,false))));
+    linkedGls.slice(0,10).forEach(g=>{
+      const row=el('div',{style:'padding:7px 16px;border-bottom:1px solid var(--line-2);display:flex;align-items:center;gap:10px;font-size:12px'});
+      row.append(el('div',{style:'flex:1;color:var(--ink-1)'},g.vendor||g.category||'—'),el('span',{style:'color:var(--ink-3);font-size:11px'},g.date||''),el('span',{class:'mono'},fmt(g.amount,false)));
+      if(g.remarks)row.append(el('div',{style:'width:100%;font-size:10.5px;color:var(--ink-3);font-style:italic;padding-top:2px'},'"'+g.remarks+'"'));
+      gp2.append(row);
+    });
+    if(linkedGls.length>10)gp2.append(el('div',{style:'padding:6px 16px;font-size:11px;color:var(--ink-3);text-align:center'},'+'+(linkedGls.length-10)+' more lines'));
+    body.append(gp2);
+  }
+
+  sheet.append(body);
+  scrim.append(sheet);
+  document.body.append(scrim);
+}
+
 function rail(){
   const counts={
     projects:S.projects.length,
-    active:S.projects.filter(p=>!isComplete(p)).length,
+    active:S.projects.filter(p=>!isComplete(p)&&!p.isBudgetItem).length,
   };
   const r=el('div',{class:'rail'+(VIEW.railOpen?' open':'')});
   const brand=el('div',{class:'brand'},
@@ -2016,7 +2098,7 @@ function viewPropertyWVMO(){
       })(),
       el('td',{style:'padding:10px 12px;vertical-align:middle'},
         el('div',{style:'display:flex;gap:8px;align-items:center;flex-wrap:wrap'},
-          el('span',{style:'font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline dotted',onclick:()=>openProject(pr.id)},pr.name||'(untitled)'),
+          el('span',{style:'font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline dotted',onclick:e=>{e.stopPropagation();openBudgetItem(pr,activeProjs,allGls);}},pr.name||'(untitled)'),
           toggleBtn,
           biAcct(pr)?el('button',{class:'btn ghost sm',style:'font-size:11px;color:var(--ink-3)',title:'Auto-match unassigned GL lines with account '+biAcct(pr)+' to this item',onclick:async e=>{e.stopPropagation();const n=await autoMatchForItem(pr);toast(n?`Matched ${n} GL line${n===1?'':'s'} to ${pr.name}`:'No unassigned lines for this account');}},'≈ Match'):null),
         barEl,
