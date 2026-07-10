@@ -40,6 +40,9 @@ async function start() {
       // Ensure WVMO extended columns exist — runs every boot, no-op if already present
       await pool.query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_budget_item boolean NOT NULL DEFAULT false`);
       await pool.query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS linked_budget_item_id uuid`);
+      await pool.query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS deposit_amount numeric`);
+      await pool.query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS deposit_paid boolean NOT NULL DEFAULT false`);
+      await pool.query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS deposit_gl_line_id text`);
       await runMigrations();
       await seedIfEmpty();
       initialized = true;

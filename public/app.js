@@ -129,7 +129,7 @@ function stepsTotal(p){ return appKeys(p).length; }
 function isComplete(p){ if(p.inHouse){ const t=Number(p.totalToComplete)||0,d=Number(p.amountCompleted)||0; return t>0&&d>=t; } return !!(p.steps&&p.steps.completed); }
 /* consistent per-property colour chip (matches dashboard bubbles + pipeline) */
 function propChip(code,extra){ return el('span',{class:'chip pchip'+(extra?' '+extra:''),style:`background:${pcolor(code)};color:#fff`},code); }
-function glSpentFor(code,cat){ return S.gl.filter(g=>g.property===code && (cat==null||g.category===cat)).reduce((a,g)=>a+(Number(g.amount)||0),0); }
+function glSpentFor(code,cat){ return S.gl.filter(g=>g.property===code&&Number(g.amount)>0 && (cat==null||g.category===cat)).reduce((a,g)=>a+(Number(g.amount)||0),0); }
 function cashAdjFor(code){ return S.cashAdjustments.filter(a=>a.property===code).reduce((a,b)=>a+(Number(b.amount)||0),0); }
 function effectiveCash(code){ const c=S.cash[code]; const base=c&&c.cash!=null?Number(c.cash):0; return base+cashAdjFor(code); }
 function projForProp(code){ return S.projects.filter(p=>p.property===code); }
@@ -1775,7 +1775,11 @@ function viewPropertyWVMO(){
   const glSum=pr=>linkedFor(pr).reduce((a,g)=>a+(Number(g.amount)||0),0);
   const effectiveSpent=pr=>pr.actualCost!=null?Number(pr.actualCost):glSum(pr);
   const contractedFor=pr=>activeProjs.filter(ap=>ap.linkedBudgetItemId===pr.id);
-  const contractedTotal=pr=>contractedFor(pr).reduce((a,ap)=>a+(Number(ap.anticipatedCost)||0),0);
+  const contractedTotal=pr=>contractedFor(pr).reduce((a,ap)=>{
+    const contract=Number(ap.anticipatedCost)||0;
+    const paidDep=(ap.depositPaid&&ap.depositAmount)?Number(ap.depositAmount):0;
+    return a+Math.max(0,contract-paidDep);
+  },0);
 
   /* Helper: extract 4-digit account code from a budget item category e.g. "7322 - SP BUILDING REPAIRS" → "7322" */
   const biAcct=p2=>{const m=(p2.category||'').match(/^(\d{4})/);return m?m[1]:null;};
@@ -1822,7 +1826,69 @@ function viewPropertyWVMO(){
       if(r&&r.ok){toast('Budget item assigned');render();}else{toast('Save failed','err');}
     }catch(ex){toast('Save failed','err');console.error(ex);}
   }});sel.append(el('option',{value:''},'— SP Budget item —'));budgetItems.forEach(bi=>sel.append(el('option',{value:bi.id},bi.name)));sel.value=pr.linkedBudgetItemId||'';return sel;})()),
-      ih?progressEl(pr):trackEl(pr));
+      ih?progressEl(pr):trackEl(pr),
+      // Deposit row
+      (()=>{
+        const dep=el('div',{style:'display:flex;align-items:center;gap:8px;padding:6px 0 0;border-top:1px solid var(--line-2);margin-top:6px;flex-wrap:wrap',onclick:e=>e.stopPropagation()});
+        const rebuildDep=async(changes)=>{
+          if(changes){Object.assign(pr,changes);
+            try{await API.send('PATCH','/projects/'+pr.id,{...pr,bids:cleanBids(pr)});}catch(e){toast('Deposit save failed','err');}
+          }
+          dep.innerHTML='';
+          dep.append(el('span',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600;white-space:nowrap'},'Deposit'));
+          if(!pr.depositAmount){
+            dep.append(el('button',{class:'btn ghost sm',style:'font-size:11px',onclick:async e=>{
+              e.stopPropagation();
+              const v=prompt('Deposit amount:');
+              if(!v||isNaN(Number(v)))return;
+              await rebuildDep({depositAmount:Number(v),depositPaid:false,depositGlLineId:null});
+            }},'+ Add deposit'));
+          } else {
+            // amount (click to edit)
+            const amtEl=el('span',{class:'mono',style:'font-size:12px;font-weight:600;cursor:text;color:var(--wheat)',title:'Click to edit'},fmt(pr.depositAmount,false));
+            amtEl.onclick=async e=>{e.stopPropagation();const v=prompt('Deposit amount:',pr.depositAmount);if(v===null)return;if(!isNaN(Number(v))){await rebuildDep({depositAmount:Number(v)||null});}};
+            dep.append(amtEl);
+            // paid checkbox
+            const paidCb=el('input',{type:'checkbox',title:'Mark deposit as paid',style:'cursor:pointer'});
+            paidCb.checked=!!pr.depositPaid;
+            paidCb.onchange=async()=>{
+              await rebuildDep({depositPaid:paidCb.checked});
+              // auto-match if just marked paid
+              if(paidCb.checked&&!pr.depositGlLineId){
+                const match=allGls.filter(g=>Number(g.amount)>0&&!g.linkedProjectId&&Math.abs(Number(g.amount)-(pr.depositAmount||0))<=(pr.depositAmount||0)*0.07).sort((a,b)=>Math.abs(Number(a.amount)-(pr.depositAmount||0))-Math.abs(Number(b.amount)-(pr.depositAmount||0)));
+                if(match.length){
+                  match[0].linkedProjectId=pr.id;
+                  pr.depositGlLineId=String(match[0].id);
+                  await linkGl(match[0],'Deposit · '+pr.name);
+                  await rebuildDep({depositGlLineId:String(match[0].id)});
+                  toast('Deposit matched to GL: '+fmt(match[0].amount,false)+' '+match[0].vendor);
+                }else{toast('Deposit marked paid — no close GL match found');}
+              }
+            };
+            dep.append(el('label',{style:'display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer'},paidCb,pr.depositPaid?el('span',{style:'color:var(--green);font-weight:600'},'Paid ✓'):el('span',{style:'color:var(--amber)'},'Unpaid')));
+            // GL match chip
+            if(pr.depositGlLineId){
+              const glMatch=allGls.find(g=>String(g.id)===String(pr.depositGlLineId));
+              if(glMatch){dep.append(el('span',{style:'font-size:11px;color:var(--green);background:var(--green-soft);border:1px solid rgba(46,125,87,.3);border-radius:5px;padding:2px 7px;display:flex;align-items:center;gap:4px'},
+                '🔗 '+fmt(glMatch.amount,false),(glMatch.vendor?' · '+glMatch.vendor.slice(0,16):''),
+                el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 4px;margin-left:2px',title:'Unlink GL match',onclick:async e=>{e.stopPropagation();glMatch.linkedProjectId=null;await linkGl(glMatch,'Deposit GL unlinked');await rebuildDep({depositGlLineId:null});}},'×')));}
+            } else if(pr.depositPaid){
+              dep.append(el('button',{class:'btn ghost sm',style:'font-size:11px;color:var(--amber)',
+                title:'Try to find a matching GL line',onclick:async e=>{e.stopPropagation();
+                  const match=allGls.filter(g=>Number(g.amount)>0&&!g.linkedProjectId&&Math.abs(Number(g.amount)-(pr.depositAmount||0))<=(pr.depositAmount||0)*0.07).sort((a,b)=>Math.abs(Number(a.amount)-(pr.depositAmount||0))-Math.abs(Number(b.amount)-(pr.depositAmount||0)));
+                  if(!match.length){toast('No close GL match found');return;}
+                  match[0].linkedProjectId=pr.id;pr.depositGlLineId=String(match[0].id);
+                  await linkGl(match[0],'Deposit · '+pr.name);await rebuildDep({depositGlLineId:String(match[0].id)});
+                  toast('Matched: '+fmt(match[0].amount,false)+' · '+match[0].vendor);}
+              },'⚡ Match GL'));
+            }
+            // remove deposit
+            dep.append(el('button',{class:'btn ghost sm',style:'font-size:10px;color:var(--ink-3);margin-left:auto',title:'Remove deposit',onclick:async e=>{e.stopPropagation();if(!confirm('Remove deposit?'))return;await rebuildDep({depositAmount:null,depositPaid:false,depositGlLineId:null});}},'✕'));
+          }
+        };
+        rebuildDep();
+        return dep;
+      })());
     return r;
   }
   const pinned2=projs.filter(p2=>p2.pinned&&!PFILT.hide[phase(p2)]);
@@ -2073,7 +2139,7 @@ function viewPropertyWVMO(){
   let glShowUnassignedOnly=false;
   let glCollapsed=false;
   let glShowContra=false;
-  const contraLines=allGls.filter(g=>Number(g.amount)<=0);
+  const contraLines=allGls.filter(g=>Number(g.amount)<=0&&!g.linkedProjectId); // unassigned contra only
   const positiveGls=allGls.filter(g=>Number(g.amount)>0);
   const glChecked=new Set(); // GL line IDs checked for batch match
   const glHeader=()=>{
@@ -2091,10 +2157,10 @@ function viewPropertyWVMO(){
             onclick:()=>{glShowUnassignedOnly=!glShowUnassignedOnly;rebuildGLTable();}},
             unassigned.length+' unassigned')
         :el('span',{class:'chip done'},'all assigned'),
-      contraLines.length?el('button',{class:'btn ghost sm',style:'font-size:11px;color:var(--ink-3)',
-          title:glShowContra?'Hide contra/credit entries':'Show contra/credit entries ('+contraLines.length+')',
-          onclick:()=>{glShowContra=!glShowContra;rebuildGLTable();}},
-          glShowContra?'hide contra':'contra ('+contraLines.length+')')
+      contraLines.length?el('button',{class:'btn'+(glShowContra?' accent':' ghost')+' sm',style:'font-size:11px',
+          title:glShowContra?'Back to normal view':'Show '+contraLines.length+' unassigned contra/credit entries',
+          onclick:()=>{glShowContra=!glShowContra;glShowUnassignedOnly=false;rebuildGLTable();}},
+          contraLines.length+' unassigned contra')
         :null,
       checkedCount
         ?el('button',{class:'btn accent sm',style:'margin-left:6px',
@@ -2126,8 +2192,8 @@ function viewPropertyWVMO(){
     /* "select all unassigned" checkbox in header */
     const allCb=el('input',{type:'checkbox',title:'Select all unassigned',style:'cursor:pointer'});
     allCb.onchange=()=>{
-      const baseGls2=glShowContra?allGls:positiveGls;
-      const displayGls2=glShowUnassignedOnly?unassigned:baseGls2;
+      const baseGls2=glShowContra?contraLines:(glShowUnassignedOnly?unassigned:positiveGls);
+      const displayGls2=baseGls2;
       displayGls2.filter(g=>!g.linkedProjectId).forEach(g=>{
         if(allCb.checked)glChecked.add(String(g.id)); else glChecked.delete(String(g.id));
       });
@@ -2135,8 +2201,8 @@ function viewPropertyWVMO(){
     };
     t.append(el('thead',{},tr(el('th',{style:'width:32px;padding:6px 8px'},allCb),th('Vendor / description'),th('Amount','r'),th('Assigned to'))));
     const tbb=el('tbody');
-    const baseGls=glShowContra?allGls:positiveGls;
-    const displayGls=glShowUnassignedOnly?unassigned:baseGls;
+    const baseGls=glShowContra?contraLines:(glShowUnassignedOnly?unassigned:positiveGls);
+    const displayGls=baseGls;
     displayGls.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
     displayGls.forEach(g=>{
       const linked=g.linkedProjectId?S.projects.find(x=>x.id===g.linkedProjectId):null;

@@ -89,8 +89,10 @@ api.post('/projects', async (req, res) => {
   p.dateAdded = p.dateAdded || new Date().toISOString().slice(0, 10);
   await tx((c) => writeProject(c, p, true));
   // WVMO extended fields — separate query outside tx so a missing column never breaks the save
-  try { await query(`update projects set linked_budget_item_id=$1,is_budget_item=$2 where id=$3`,
-    [(p as any).linkedBudgetItemId||null,!!(p as any).isBudgetItem,p.id]); } catch(_){}
+  try { await query(
+    `update projects set linked_budget_item_id=$1,is_budget_item=$2,deposit_amount=$3,deposit_paid=$4,deposit_gl_line_id=$5 where id=$6`,
+    [(p as any).linkedBudgetItemId||null,!!(p as any).isBudgetItem,
+     (p as any).depositAmount??null,!!(p as any).depositPaid,(p as any).depositGlLineId||null,p.id]); } catch(_){}
   const r = await query('select * from projects where id=$1', [p.id]);
   res.json(rowToProject(r.rows[0], p.bids || [], p.progressNotes || []));
 });
@@ -102,8 +104,10 @@ api.patch('/projects/:id', async (req, res) => {
   if (!p.property || !p.name) return res.status(400).json({ error: 'property and name are required' });
   await tx((c) => writeProject(c, p, false));
   // WVMO extended fields — separate query outside tx so a missing column never breaks the save
-  try { await query(`update projects set linked_budget_item_id=$1,is_budget_item=$2 where id=$3`,
-    [(p as any).linkedBudgetItemId||null,!!(p as any).isBudgetItem,p.id]); } catch(_){}
+  try { await query(
+    `update projects set linked_budget_item_id=$1,is_budget_item=$2,deposit_amount=$3,deposit_paid=$4,deposit_gl_line_id=$5 where id=$6`,
+    [(p as any).linkedBudgetItemId||null,!!(p as any).isBudgetItem,
+     (p as any).depositAmount??null,!!(p as any).depositPaid,(p as any).depositGlLineId||null,p.id]); } catch(_){}
   const r = await query('select * from projects where id=$1', [p.id]);
   res.json(rowToProject(r.rows[0], p.bids || [], p.progressNotes || []));
 });
