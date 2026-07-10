@@ -121,6 +121,8 @@ export interface GLLine {
   remarks?: string;
   linkedProjectId?: string | null;
   partial?: boolean;
+  ignored?: boolean;
+  deleted?: boolean;
 }
 
 export interface AppState {

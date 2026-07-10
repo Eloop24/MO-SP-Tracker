@@ -44,6 +44,7 @@ async function start() {
       await pool.query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS deposit_paid boolean NOT NULL DEFAULT false`);
       await pool.query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS deposit_gl_line_id text`);
       await pool.query(`ALTER TABLE gl_lines ADD COLUMN IF NOT EXISTS ignored boolean NOT NULL DEFAULT false`);
+      await pool.query(`ALTER TABLE gl_lines ADD COLUMN IF NOT EXISTS deleted boolean NOT NULL DEFAULT false`);
       await runMigrations();
       await seedIfEmpty();
       initialized = true;

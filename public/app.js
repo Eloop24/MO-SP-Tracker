@@ -2310,9 +2310,9 @@ function viewPropertyBudgetTracker(code){
   let glCollapsed=false;
   let glShowContra=false;
   let glShowIgnored=false;
-  const contraLines=allGls.filter(g=>Number(g.amount)<=0&&!g.linkedProjectId&&!g.ignored);
-  const positiveGls=allGls.filter(g=>Number(g.amount)>0&&!g.ignored);
-  const ignoredGls=allGls.filter(g=>g.ignored);
+  const contraLines=allGls.filter(g=>Number(g.amount)<0&&!g.linkedProjectId&&!g.ignored&&!g.deleted);
+  const positiveGls=allGls.filter(g=>Number(g.amount)>=0&&!g.ignored&&!g.deleted);
+  const ignoredGls=allGls.filter(g=>g.ignored&&!g.deleted);
   const glChecked=new Set(); // GL line IDs checked for batch match
   const glHeader=()=>{
     const checkedCount=glChecked.size;
@@ -2403,14 +2403,18 @@ function viewPropertyBudgetTracker(code){
         td(linked
           ?el('span',{style:'font-size:11px;color:var(--green);display:flex;gap:3px;align-items:center'},
               '🔗 '+linked.name.slice(0,16),
-              el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 4px',title:'Return to pool',onclick:async()=>{g.linkedProjectId=null;await linkGl(g,'GL returned to pool');}},'↩'))
+              el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 4px',title:'Return to pool',onclick:async()=>{g.linkedProjectId=null;await linkGl(g,'GL returned to pool');}},'↩'),
+              el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 4px;color:var(--rust)',title:'Delete — permanently hidden, survives re-imports',onclick:async e=>{e.stopPropagation();if(!confirm('Delete this GL line?'))return;await API.send('PATCH','/gl/'+g.id+'/delete',{deleted:true});S.gl=S.gl.filter(x=>x.id!==g.id);rebuildGLTable();}},'✕'))
           :g.ignored
             ?el('span',{style:'font-size:11px;color:var(--ink-3);display:flex;gap:4px;align-items:center;font-style:italic'},'ignored',
-                el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 4px',title:'Restore',onclick:async()=>{g.ignored=false;await API.send('PATCH','/gl/'+g.id+'/ignore',{ignored:false});rebuildGLTable();}},'↩'))
+                el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 4px',title:'Restore',onclick:async()=>{g.ignored=false;await API.send('PATCH','/gl/'+g.id+'/ignore',{ignored:false});rebuildGLTable();}},'↩'),
+                el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 4px;color:var(--rust)',title:'Delete permanently',onclick:async e=>{e.stopPropagation();if(!confirm('Delete this GL line?'))return;await API.send('PATCH','/gl/'+g.id+'/delete',{deleted:true});S.gl=S.gl.filter(x=>x.id!==g.id);rebuildGLTable();}},'✕'))
             :el('div',{style:'display:flex;gap:4px;align-items:center'},
                 el('span',{style:'font-size:11px;color:var(--amber);font-style:italic'},'unassigned'),
                 el('button',{class:'btn ghost sm',style:'font-size:10px;padding:1px 5px;color:var(--ink-3)',title:'Ignore — mark as reclassification, exclude from all calculations',
-                  onclick:async e=>{e.stopPropagation();g.ignored=true;await API.send('PATCH','/gl/'+g.id+'/ignore',{ignored:true});rebuildGLTable();}},'Ignore'))));
+                  onclick:async e=>{e.stopPropagation();g.ignored=true;await API.send('PATCH','/gl/'+g.id+'/ignore',{ignored:true});rebuildGLTable();}},'Ignore'),
+                el('button',{class:'btn ghost sm',style:'font-size:10px;padding:1px 5px;color:var(--rust)',title:'Delete — permanently hidden, survives re-imports',
+                  onclick:async e=>{e.stopPropagation();if(!confirm('Delete this GL line? It will be excluded on all future imports too.'))return;await API.send('PATCH','/gl/'+g.id+'/delete',{deleted:true});S.gl=S.gl.filter(x=>x.id!==g.id);rebuildGLTable();}},'✕'))));
       tbb.append(glRow);
     });
     t.append(tbb);

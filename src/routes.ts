@@ -450,6 +450,12 @@ api.patch('/gl/:id/ignore', async (req, res) => {
   res.json({ ok: true });
 });
 
+api.patch('/gl/:id/delete', async (req, res) => {
+  const { deleted } = req.body as { deleted: boolean };
+  await query('update gl_lines set deleted=$1 where id=$2', [!!deleted, req.params.id]);
+  res.json({ ok: true });
+});
+
 api.patch('/gl/:id/link', async (req, res) => {
   const { linkedProjectId, partial } = req.body || {};
   await query('update gl_lines set linked_project_id=$1, partial=$2 where id=$3',
@@ -486,14 +492,16 @@ api.post('/import/gl/confirm', async (req, res) => {
     // Preserve existing GL assignments (control# → project) so monthly re-upload
     // does not wipe manually dragged assignments.
     const saved = await c.query(
-      `select control, linked_project_id, ignored from gl_lines
+      `select control, linked_project_id, ignored, deleted from gl_lines
        where control is not null and control <> ''`
     );
     const assignments: Record<string,string> = {};
     const ignoredControls = new Set<string>();
+    const deletedControls = new Set<string>();
     for (const r of saved.rows) {
       if (r.linked_project_id) assignments[r.control] = r.linked_project_id;
       if (r.ignored) ignoredControls.add(r.control);
+      if (r.deleted) deletedControls.add(r.control);
     }
 
     // Build account-code → project map for auto-matching on re-import.
@@ -540,10 +548,11 @@ api.post('/import/gl/confirm', async (req, res) => {
         }
       }
       await c.query(
-        `insert into gl_lines(id,property_code,account,category,date,vendor,control,amount,remarks,linked_project_id,partial,ignored)
-         values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,false,$11)`,
+        `insert into gl_lines(id,property_code,account,category,date,vendor,control,amount,remarks,linked_project_id,partial,ignored,deleted)
+         values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,false,$11,$12)`,
         [g.id, g.property, g.account || null, g.category || null, dnull(g.date), g.vendor || null, g.control || null, Number(g.amount) || 0, g.remarks || null, lp,
-         !!(g.control && ignoredControls.has(g.control))]
+         !!(g.control && ignoredControls.has(g.control)),
+         !!(g.control && deletedControls.has(g.control))]
       );
     }
     console.log(`GL import: ${lines.length} lines, ${autoMatched} auto-matched by category`);
