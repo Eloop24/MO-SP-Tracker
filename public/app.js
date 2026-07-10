@@ -1671,7 +1671,18 @@ function viewProperty(){
     });
     t.append(tbb); gp.append(t);
   } else gp.append(el('div',{class:'empty'},'No ledger lines for this property. Upload a general ledger on the Data tab.'));
-  right.append(gp);
+  // side-by-side: budget table left, GL sidebar right
+  const glScroll=el('div',{style:'overflow-y:auto;flex:1;max-height:600px'});
+  // move table into scroll container
+  if(gp.children.length>1){
+    const kids=Array.from(gp.children).slice(1); // skip header
+    kids.forEach(k=>glScroll.append(k));
+    gp.append(glScroll);
+  } else { glScroll.append(gp.lastChild||''); gp.append(glScroll); }
+  gp.style.maxHeight='none';
+  const budgetGlRow=el('div',{style:'display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start'});
+  budgetGlRow.append(bp,gp);
+  right.append(budgetGlRow);
 
   body.append(left,right);
   return {bar,body};
@@ -1762,7 +1773,7 @@ function viewPropertyWVMO(){
   pj.append(el('div',{class:'ph'},el('h3',{},'Active Projects'),el('div',{class:'sp'}),el('span',{class:'chip'},`${projs.length} total`),
     el('button',{class:'btn ghost sm',style:'margin-left:4px',onclick:()=>{VIEW.prop=code;openProject(null);}},'+ Add')));
   const filt=el('div',{class:'phasefilt'});
-  PHASES.forEach(ph=>{if(!counts[ph.key])return;const hidden=!!PFILT.hide[ph.key];
+  PHASES.forEach(ph=>{if(ph.key==='discussed'||ph.key==='note')return;if(!counts[ph.key])return;const hidden=!!PFILT.hide[ph.key];
     filt.append(el('button',{class:'pf-chip'+(hidden?' off':''),title:hidden?'Show':'Hide',onclick:()=>{PFILT.hide[ph.key]=!PFILT.hide[ph.key];render();}},el('span',{},ph.label),el('span',{class:'pf-n'},String(counts[ph.key]))));});
   pj.append(el('div',{class:'pad',style:'padding-bottom:8px'},dateFilterGroup(PFILT),el('div',{style:'height:9px'}),filt));
   const pb=el('div',{style:'max-height:340px;overflow:auto'});
@@ -1783,6 +1794,7 @@ function viewPropertyWVMO(){
   const pinned2=projs.filter(p2=>p2.pinned&&!PFILT.hide[phase(p2)]);
   if(pinned2.length){pb.append(el('div',{class:'grp-h pinned'},'📌 Pinned',el('span',{class:'grp-n'},String(pinned2.length))));pinned2.forEach(pr=>pb.append(projRow2(pr)));}
   PHASES.forEach(ph=>{
+    if(ph.key==='discussed'||ph.key==='note')return;
     if(PFILT.hide[ph.key])return;
     const list=projs.filter(p2=>phase(p2)===ph.key&&!p2.pinned);
     if(!list.length)return;
@@ -1914,10 +1926,8 @@ function viewPropertyWVMO(){
     el('td',{style:'padding:10px 16px;text-align:right;font-family:var(--mono)'},totalSpent?fmt(totalSpent):'—'),
     el('td',{style:`padding:10px 16px;text-align:right;font-family:var(--mono);color:${varColor}`},(totalVar>=0?'+':'')+fmt(totalVar,false))));
   tbl.append(tbody,tfoot); bp.append(tbl);
-  right.append(bp);
-
-  /* ── SECTION 3: GL lines (draggable) ─────────────── */
-  const gp=el('div',{class:'panel',style:'overflow:auto'});
+  /* ── SECTION 3: GL lines (draggable, sidebar) ──────── */
+  const gp=el('div',{class:'panel',style:'overflow:hidden;display:flex;flex-direction:column'});
   const unassigned=allGls.filter(g=>!g.linkedProjectId&&Number(g.amount)>0);
   gp.append(el('div',{class:'ph'},
     el('h3',{},'General Ledger'),el('div',{class:'sp'}),
@@ -1927,7 +1937,7 @@ function viewPropertyWVMO(){
   if(allGls.length){
     gp.append(el('div',{style:'padding:6px 16px;font-size:11.5px;color:var(--ink-3);border-bottom:1px solid var(--line-2);background:var(--panel-2)'},'⠿  Drag rows onto a budget item above, or drop directly on a row'));
     const t=el('table',{class:'tbl'});
-    t.append(el('thead',{},tr(th(''),th('Date'),th('Account'),th('Vendor / description'),th('Amount','r'),th('Assigned to'))));
+    t.append(el('thead',{},tr(th(''),th('Vendor / description'),th('Amount','r'),th('Assigned to'))));
     const tbb=el('tbody');
     allGls.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
     allGls.forEach(g=>{
@@ -1940,20 +1950,31 @@ function viewPropertyWVMO(){
       });
       glRow.append(
         td(el('span',{style:'font-size:14px;color:var(--ink-3);user-select:none'},'⠿')),
-        td(el('span',{class:'mono',style:'font-size:12px'},g.date||'—')),
-        td(el('span',{style:'font-size:11.5px;color:var(--ink-2)'},g.category||'—')),
-        td(el('div',{style:'font-size:12px;max-width:200px'},el('div',{},g.vendor||'—'),g.remarks?el('div',{style:'color:var(--ink-3);font-size:11px'},g.remarks):null)),
+        td(el('div',{style:'font-size:12px;max-width:180px'},
+          el('div',{style:'font-weight:500'},g.vendor||g.category||'—'),
+          el('div',{style:'color:var(--ink-3);font-size:11px'},(g.date||'')+(g.category?' · '+g.category.slice(0,18):'')))),
         tdn(g.amount,1),
         td(linked
-          ?el('span',{style:'font-size:11.5px;color:var(--green);display:flex;gap:4px;align-items:center'},
-              '🔗 '+linked.name.slice(0,20),
-              el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 4px',onclick:async()=>{g.linkedProjectId=null;await linkGl(g,'GL unlinked');}},'✕'))
-          :el('span',{style:'font-size:11px;color:var(--ink-3);font-style:italic'},'unassigned')));
+          ?el('span',{style:'font-size:11px;color:var(--green);display:flex;gap:3px;align-items:center'},
+              '🔗 '+linked.name.slice(0,16),
+              el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 3px',onclick:async()=>{g.linkedProjectId=null;await linkGl(g,'GL unlinked');}},'✕'))
+          :el('span',{style:'font-size:11px;color:var(--amber);font-style:italic'},'unassigned')));
       tbb.append(glRow);
     });
     t.append(tbb); gp.append(t);
   } else gp.append(el('div',{class:'empty'},'No GL lines. Upload a general ledger on the Data tab.'));
-  right.append(gp);
+  // side-by-side: budget table left, GL sidebar right
+  const glScroll=el('div',{style:'overflow-y:auto;flex:1;max-height:600px'});
+  // move table into scroll container
+  if(gp.children.length>1){
+    const kids=Array.from(gp.children).slice(1); // skip header
+    kids.forEach(k=>glScroll.append(k));
+    gp.append(glScroll);
+  } else { glScroll.append(gp.lastChild||''); gp.append(glScroll); }
+  gp.style.maxHeight='none';
+  const budgetGlRow=el('div',{style:'display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start'});
+  budgetGlRow.append(bp,gp);
+  right.append(budgetGlRow);
 
   body.append(left,right);
   return {bar,body};
