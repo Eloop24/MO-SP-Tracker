@@ -2320,11 +2320,11 @@ function viewPropertyBudgetTracker(code){
   const glHeader=()=>{
     const checkedCount=glChecked.size;
     const h=el('div',{class:'ph'});
-    h.append(
+    const _hItems=[
       el('h3',{style:'cursor:pointer;user-select:none',title:glCollapsed?'Expand GL section':'Collapse GL section',onclick:()=>{glCollapsed=!glCollapsed;rebuildGLTable();}},
         (glCollapsed?'▶':'▼')+' General Ledger'),
       el('div',{class:'sp'}),
-      el('span',{class:'chip',style:'cursor:default'},`${positiveGls.length} lines`+(contraLines.length?' + '+contraLines.length+' contra':'')),
+      el('span',{class:'chip',style:'cursor:default'},positiveGls.length+' lines'+(contraLines.length?' · '+contraLines.length+' contra':'')),
       el('span',{class:'chip',style:'cursor:default'},fmt(glSpent)),
       unassigned.length
         ?el('button',{class:'btn'+(glShowUnassignedOnly?' accent':' ghost')+' sm',style:'font-size:12px',
@@ -2334,19 +2334,19 @@ function viewPropertyBudgetTracker(code){
         :el('span',{class:'chip done'},'all assigned'),
       contraLines.length?el('button',{class:'btn'+(glShowContra?' accent':' ghost')+' sm',style:'font-size:11px',
           title:glShowContra?'Back to normal view':'Show '+contraLines.length+' unassigned contra/credit entries',
-          onclick:()=>{glShowContra=!glShowContra;glShowUnassignedOnly=false;glShowIgnored=false;rebuildGLTable();}},
-          contraLines.length+' unassigned contra')
-        :null,
+          onclick:()=>{glShowContra=!glShowContra;glShowUnassignedOnly=false;glShowIgnored=false;glShowDeleted=false;glShowAll=false;rebuildGLTable();}},
+          contraLines.length+' contra')
+        :undefined,
       ignoredGls.length?el('button',{class:'btn'+(glShowIgnored?' accent':' ghost')+' sm',style:'font-size:11px;color:var(--ink-3)',
           title:glShowIgnored?'Hide ignored lines':'Show '+ignoredGls.length+' ignored lines',
           onclick:()=>{glShowIgnored=!glShowIgnored;glShowContra=false;glShowUnassignedOnly=false;glShowDeleted=false;glShowAll=false;rebuildGLTable();}},
           ignoredGls.length+' ignored')
-        :null,
+        :undefined,
       deletedGls.length?el('button',{class:'btn'+(glShowDeleted?' accent':' ghost')+' sm',style:'font-size:11px;color:var(--rust)',
-          title:glShowDeleted?'Hide deleted lines':'Show '+deletedGls.length+' deleted lines (undo available)',
+          title:glShowDeleted?'Hide deleted lines':'Show '+deletedGls.length+' deleted (undo)',
           onclick:()=>{glShowDeleted=!glShowDeleted;glShowContra=false;glShowUnassignedOnly=false;glShowIgnored=false;glShowAll=false;rebuildGLTable();}},
           deletedGls.length+' deleted')
-        :null,
+        :undefined,
       el('button',{class:'btn'+(glShowAll?' accent':' ghost')+' sm',style:'font-size:11px',
           title:glShowAll?'Back to normal view':'Show all GL lines including negatives and sweeps',
           onclick:()=>{glShowAll=!glShowAll;glShowContra=false;glShowUnassignedOnly=false;glShowIgnored=false;glShowDeleted=false;rebuildGLTable();}},
@@ -2362,7 +2362,9 @@ function viewPropertyBudgetTracker(code){
               glChecked.clear();
               toast(n?`Matched ${n} line${n===1?'':'s'}`:'No matches found');
             }},`⚡ Match ${checkedCount} selected`)
-        :el('button',{class:'btn sm',style:'margin-left:6px',title:'Auto-match all unassigned GL lines',onclick:autoMatchGL},'⚡ Match all'));
+        :el('button',{class:'btn sm',style:'margin-left:6px',title:'Auto-match all unassigned GL lines',onclick:autoMatchGL},'⚡ Match all'),
+    ];
+    h.append(..._hItems.filter(x=>x!=null));
     return h;
   };
   const glHeaderEl=glHeader();
@@ -2381,7 +2383,7 @@ function viewPropertyBudgetTracker(code){
     /* "select all unassigned" checkbox in header */
     const allCb=el('input',{type:'checkbox',title:'Select all unassigned',style:'cursor:pointer'});
     allCb.onchange=()=>{
-      const baseGls2=glShowDeleted?deletedGls:glShowAll?[...positiveGls,...contraLines].sort((a,b)=>(b.date||'').localeCompare(a.date||'')):glShowIgnored?ignoredGls:glShowContra?contraLines:(glShowUnassignedOnly?unassigned:positiveGls);
+      const baseGls2=glShowDeleted?deletedGls:glShowAll?allGls.filter(g=>!g.ignored).sort((a,b)=>(b.date||'').localeCompare(a.date||'')):glShowIgnored?ignoredGls:glShowContra?contraLines:(glShowUnassignedOnly?unassigned:positiveGls);
       const displayGls2=baseGls2;
       displayGls2.filter(g=>!g.linkedProjectId).forEach(g=>{
         if(allCb.checked)glChecked.add(String(g.id)); else glChecked.delete(String(g.id));
@@ -2390,7 +2392,7 @@ function viewPropertyBudgetTracker(code){
     };
     t.append(el('thead',{},tr(el('th',{style:'width:32px;padding:6px 8px'},allCb),th('Vendor / description'),th('Amount','r'),th('Assigned to'))));
     const tbb=el('tbody');
-    const baseGls=glShowDeleted?deletedGls:glShowAll?[...positiveGls,...contraLines].sort((a,b)=>(b.date||'').localeCompare(a.date||'')):glShowIgnored?ignoredGls:glShowContra?contraLines:(glShowUnassignedOnly?unassigned:positiveGls);
+    const baseGls=glShowDeleted?deletedGls:glShowAll?allGls.filter(g=>!g.ignored).sort((a,b)=>(b.date||'').localeCompare(a.date||'')):glShowIgnored?ignoredGls:glShowContra?contraLines:(glShowUnassignedOnly?unassigned:positiveGls);
     const displayGls=baseGls;
     displayGls.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
     displayGls.forEach(g=>{
