@@ -1671,18 +1671,8 @@ function viewProperty(){
     });
     t.append(tbb); gp.append(t);
   } else gp.append(el('div',{class:'empty'},'No ledger lines for this property. Upload a general ledger on the Data tab.'));
-  // side-by-side: budget table left, GL sidebar right
-  const glScroll=el('div',{style:'overflow-y:auto;flex:1;max-height:600px'});
-  // move table into scroll container
-  if(gp.children.length>1){
-    const kids=Array.from(gp.children).slice(1); // skip header
-    kids.forEach(k=>glScroll.append(k));
-    gp.append(glScroll);
-  } else { glScroll.append(gp.lastChild||''); gp.append(glScroll); }
-  gp.style.maxHeight='none';
-  const budgetGlRow=el('div',{style:'display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start'});
-  budgetGlRow.append(bp,gp);
-  body.append(pj, autoBar, budgetGlRow);
+  right.append(gp);
+  body.append(left, right);
   return {bar,body};
 }
 
@@ -1772,6 +1762,20 @@ function viewPropertyWVMO(){
   const contractedFor=pr=>activeProjs.filter(ap=>ap.linkedBudgetItemId===pr.id);
   const contractedTotal=pr=>contractedFor(pr).reduce((a,ap)=>a+(Number(ap.anticipatedCost)||0),0);
 
+  /* Helper: extract 4-digit account code from a budget item category e.g. "7322 - SP BUILDING REPAIRS" → "7322" */
+  const biAcct=p2=>{const m=(p2.category||'').match(/^(\d{4})/);return m?m[1]:null;};
+  /* Auto-match unassigned GL lines for a specific budget item's account code */
+  const autoMatchForItem=async(bi)=>{
+    const code4=biAcct(bi); if(!code4)return 0;
+    let n=0;
+    for(const g of allGls){
+      if(!g.linkedProjectId&&Number(g.amount)>0&&g.account&&String(g.account).trim()===code4){
+        g.linkedProjectId=bi.id; await linkGl(g,'Auto-matched · '+bi.name); n++;
+      }
+    }
+    return n;
+  };
+
   /* ── SECTION 1: Active Projects ──────────────────── */
   const projs=activeProjs.filter(p2=>inDateRange(p2,PFILT));
   const pj=el('div',{class:'panel'});
@@ -1794,7 +1798,16 @@ function viewPropertyWVMO(){
         ih?el('span',{class:'chip ih'},'In-house'):null,
         el('span',{style:'font-size:11px;color:var(--ink-3)'},pr.category),
         el('span',{class:'mono',style:'font-size:12px;font-weight:600'},fmt(ih?ihTotal(pr):(pr.actualCost!=null?pr.actualCost:pr.anticipatedCost),false)),
-        (()=>{const sel=el('select',{style:'font-size:11px;padding:2px 6px;border:1px solid var(--line);border-radius:4px;background:var(--panel-2);color:var(--ink-2);max-width:180px',title:'Assign to SP Budget item',onclick:e=>e.stopPropagation(),onchange:async e=>{e.stopPropagation();pr.linkedBudgetItemId=e.target.value||null;await saveProject(pr,'Budget item assigned');}});sel.append(el('option',{value:''},'— SP Budget item —'));budgetItems.forEach(bi=>sel.append(el('option',{value:bi.id,...(pr.linkedBudgetItemId===bi.id?{selected:'true'}:{})},bi.name)));return sel;})()),
+        (()=>{const sel=el('select',{style:'font-size:11px;padding:2px 6px;border:1px solid var(--line);border-radius:4px;background:var(--panel-2);color:var(--ink-2);max-width:180px',title:'Assign to SP Budget item',onclick:e=>e.stopPropagation(),onchange:async e=>{
+    e.stopPropagation();
+    const biId=e.target.value||null;
+    pr.linkedBudgetItemId=biId;
+    await saveProject(pr,'Budget item assigned');
+    if(biId){
+      const bi=budgetItems.find(x=>x.id===biId);
+      if(bi){const n=await autoMatchForItem(bi);if(n)toast(`Linked ${n} GL line${n===1?'':'s'} to ${bi.name}`);}
+    }
+  }});sel.append(el('option',{value:''},'— SP Budget item —'));budgetItems.forEach(bi=>sel.append(el('option',{value:bi.id,...(pr.linkedBudgetItemId===bi.id?{selected:'true'}:{})},bi.name)));return sel;})()),
       ih?progressEl(pr):trackEl(pr));
     return r;
   }
@@ -1888,9 +1901,10 @@ function viewPropertyWVMO(){
       el('td',{style:'padding:10px 12px;vertical-align:middle'},
         el('div',{style:'font-size:11.5px;color:var(--ink-2);line-height:1.3'},pr.category||'—')),
       el('td',{style:'padding:10px 12px;vertical-align:middle'},
-        el('div',{style:'display:flex;gap:8px;align-items:center'},
+        el('div',{style:'display:flex;gap:8px;align-items:center;flex-wrap:wrap'},
           el('span',{style:'font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline dotted',onclick:()=>openProject(pr.id)},pr.name||'(untitled)'),
-          toggleBtn),
+          toggleBtn,
+          biAcct(pr)?el('button',{class:'btn ghost sm',style:'font-size:11px;color:var(--ink-3)',title:'Auto-match unassigned GL lines with account '+biAcct(pr)+' to this item',onclick:async e=>{e.stopPropagation();const n=await autoMatchForItem(pr);toast(n?`Matched ${n} GL line${n===1?'':'s'} to ${pr.name}`:'No unassigned lines for this account');}},'≈ Match'):null),
         barEl,
         pr.notes?el('div',{style:'font-size:11px;color:var(--ink-3);margin-top:3px'},pr.notes.slice(0,80)+(pr.notes.length>80?'…':'')):null),
       el('td',{style:'padding:10px 16px;text-align:right;font-family:var(--mono);font-weight:700'},bdg?fmt(bdg):'—'),
@@ -1961,8 +1975,6 @@ function viewPropertyWVMO(){
   const gp=el('div',{class:'panel',style:'overflow:hidden;display:flex;flex-direction:column'});
   const unassigned=allGls.filter(g=>!g.linkedProjectId&&Number(g.amount)>0);
   /* Auto-match unassigned GL lines to budget items by category */
-  /* Extract leading 4-digit account code from a budget item's category string */
-  const biAcct=p2=>{const m=p2.category&&p2.category.match(/^(\d{4})/);return m?m[1]:null;};
   /* Match a GL line to a budget item: prefer account# match, fall back to category text match */
   const matchBudgetItem=g=>{
     // 1. exact account number match (e.g. g.account="7322" vs bi.category="7322 - SP BUILDING REPAIRS")
@@ -2012,10 +2024,7 @@ function viewPropertyWVMO(){
   const glHeaderEl=glHeader();
   gp.append(glHeaderEl);
   /* prominent auto-match action bar */
-  const autoBar=el('div',{style:'display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--panel);border:1px solid var(--line);border-radius:8px;margin-bottom:0'});
-  autoBar.append(
-    el('span',{style:'font-size:13px;color:var(--ink-2);flex:1'},'Auto-match GL lines to budget items by account code — assigns unmatched lines in one click.'),
-    el('button',{class:'btn accent',style:'white-space:nowrap',onclick:autoMatchGL},'⚡ Auto-match GL'));
+  /* autoBar removed — ⚡ Auto-match is in the GL section below */
   let _glTableEl=null;
   function rebuildGLTable(){
     if(_glTableEl)_glTableEl.remove();
@@ -2056,7 +2065,7 @@ function viewPropertyWVMO(){
     } else { _glTableEl=el('div',{class:'empty'},'No GL lines. Upload a general ledger on the Data tab.'); gp.append(_glTableEl); }
   }
   rebuildGLTable();
-  body.append(pj, autoBar, bp, gp);
+  body.append(pj, bp, gp);
   return {bar,body};
 }
 
