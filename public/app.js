@@ -2312,10 +2312,12 @@ function viewPropertyBudgetTracker(code){
   let glShowIgnored=false;
   let glShowDeleted=false;
   let glShowAll=false;
+  let glShowNew=false;
   const contraLines=allGls.filter(g=>Number(g.amount)<0&&!g.linkedProjectId&&!g.ignored);
   const positiveGls=allGls.filter(g=>Number(g.amount)>=0&&!g.ignored);
   const ignoredGls=allGls.filter(g=>g.ignored);
   const deletedGls=S.gl.filter(g=>g.property===code&&g.deleted);
+  const newGls=allGls.filter(g=>g.isNew&&!g.ignored);
   const glChecked=new Set(); // GL line IDs checked for batch match
   const glHeader=()=>{
     const checkedCount=glChecked.size;
@@ -2332,9 +2334,14 @@ function viewPropertyBudgetTracker(code){
             onclick:()=>{glShowUnassignedOnly=!glShowUnassignedOnly;rebuildGLTable();}},
             unassigned.length+' unassigned')
         :el('span',{class:'chip done'},'all assigned'),
+      newGls.length?el('button',{class:'btn'+(glShowNew?' accent':' ghost')+' sm',style:'font-size:11px;color:var(--green)',
+          title:glShowNew?'Back to full view':'Show only new lines from latest upload',
+          onclick:()=>{glShowNew=!glShowNew;glShowUnassignedOnly=false;glShowContra=false;glShowIgnored=false;glShowDeleted=false;glShowAll=false;rebuildGLTable();}},
+          newGls.length+' new ✨')
+        :undefined,
       contraLines.length?el('button',{class:'btn'+(glShowContra?' accent':' ghost')+' sm',style:'font-size:11px',
           title:glShowContra?'Back to normal view':'Show '+contraLines.length+' unassigned contra/credit entries',
-          onclick:()=>{glShowContra=!glShowContra;glShowUnassignedOnly=false;glShowIgnored=false;glShowDeleted=false;glShowAll=false;rebuildGLTable();}},
+          onclick:()=>{glShowContra=!glShowContra;glShowUnassignedOnly=false;glShowIgnored=false;glShowDeleted=false;glShowAll=false;glShowNew=false;rebuildGLTable();}},
           contraLines.length+' contra')
         :undefined,
       ignoredGls.length?el('button',{class:'btn'+(glShowIgnored?' accent':' ghost')+' sm',style:'font-size:11px;color:var(--ink-3)',
@@ -2383,7 +2390,7 @@ function viewPropertyBudgetTracker(code){
     /* "select all unassigned" checkbox in header */
     const allCb=el('input',{type:'checkbox',title:'Select all unassigned',style:'cursor:pointer'});
     allCb.onchange=()=>{
-      const baseGls2=glShowDeleted?deletedGls:glShowAll?allGls.filter(g=>!g.ignored).sort((a,b)=>(b.date||'').localeCompare(a.date||'')):glShowIgnored?ignoredGls:glShowContra?contraLines:(glShowUnassignedOnly?unassigned:positiveGls);
+      const baseGls2=glShowNew?newGls:glShowDeleted?deletedGls:glShowAll?allGls.filter(g=>!g.ignored).sort((a,b)=>(b.date||'').localeCompare(a.date||'')):glShowIgnored?ignoredGls:glShowContra?contraLines:(glShowUnassignedOnly?unassigned:positiveGls);
       const displayGls2=baseGls2;
       displayGls2.filter(g=>!g.linkedProjectId).forEach(g=>{
         if(allCb.checked)glChecked.add(String(g.id)); else glChecked.delete(String(g.id));
@@ -2392,7 +2399,7 @@ function viewPropertyBudgetTracker(code){
     };
     t.append(el('thead',{},tr(el('th',{style:'width:32px;padding:6px 8px'},allCb),th('Vendor / description'),th('Amount','r'),th('Assigned to'))));
     const tbb=el('tbody');
-    const baseGls=glShowDeleted?deletedGls:glShowAll?allGls.filter(g=>!g.ignored).sort((a,b)=>(b.date||'').localeCompare(a.date||'')):glShowIgnored?ignoredGls:glShowContra?contraLines:(glShowUnassignedOnly?unassigned:positiveGls);
+    const baseGls=glShowNew?newGls:glShowDeleted?deletedGls:glShowAll?allGls.filter(g=>!g.ignored).sort((a,b)=>(b.date||'').localeCompare(a.date||'')):glShowIgnored?ignoredGls:glShowContra?contraLines:(glShowUnassignedOnly?unassigned:positiveGls);
     const displayGls=baseGls;
     displayGls.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
     displayGls.forEach(g=>{
@@ -2403,14 +2410,16 @@ function viewPropertyBudgetTracker(code){
       else{cb.checked=glChecked.has(gidStr);cb.onchange=()=>{if(cb.checked)glChecked.add(gidStr);else glChecked.delete(gidStr);/* refresh header */const oldH=gp.querySelector('.ph');if(oldH)oldH.replaceWith(glHeader());};}
       const glRow=el('tr',{
         draggable:'true',
-        style:'cursor:grab'+(linked?';opacity:.6':''),
+        style:'cursor:grab'+(linked?';opacity:.6':'')+(g.isNew?';border-left:3px solid var(--green)':''),
         ondragstart:e=>{e.dataTransfer.setData('glId',gidStr);e.dataTransfer.effectAllowed='link';glRow.style.opacity='.35';},
         ondragend:()=>{glRow.style.opacity=linked?'.6':'1';}
       });
       glRow.append(
         el('td',{style:'padding:4px 8px;width:32px'},cb),
         td(el('div',{style:'font-size:12px;max-width:220px'},
-          el('div',{style:'font-weight:500'},g.vendor||g.category||'—'),
+          el('div',{style:'display:flex;align-items:center;gap:5px'},
+            el('span',{style:'font-weight:500'},g.vendor||g.category||'—'),
+            g.isNew?el('span',{style:'font-size:9px;font-weight:700;color:var(--green);background:var(--green-soft);border:1px solid rgba(46,125,87,.3);border-radius:3px;padding:0 4px;letter-spacing:.04em'},'NEW'):null),
           el('div',{style:'color:var(--ink-3);font-size:11px'},(g.date||'')+(g.category?' · '+g.category.slice(0,20):'')),
           g.remarks?el('div',{style:'font-size:11px;color:var(--ink-2);font-style:italic;border-left:2px solid var(--line);padding-left:5px;margin-top:3px'},'"'+g.remarks.slice(0,55)+(g.remarks.length>55?'…':'')+'"'):null)),
         tdn(g.amount,1),

@@ -136,7 +136,7 @@ export async function assembleState(): Promise<AppState> {
   for (const r of cash.rows) cashMap[r.property_code] = rowToCash(r);
 
   const cashAdjustments: CashAdjustment[] = adj.rows.map((r) => ({ id: r.id, property: r.property_code, date: d(r.date), amount: Number(r.amount), note: r.note ?? '' }));
-  const glLines: GLLine[] = gl.rows.map((r) => ({ id: r.id, property: r.property_code, account: r.account, category: r.category, date: r.date ? d(r.date) : '', vendor: r.vendor, control: r.control, amount: Number(r.amount), remarks: r.remarks, linkedProjectId: r.linked_project_id, partial: !!r.partial, ignored: !!r.ignored, deleted: !!r.deleted }));
+  const glLines: GLLine[] = gl.rows.map((r) => ({ id: r.id, property: r.property_code, account: r.account, category: r.category, date: r.date ? d(r.date) : '', vendor: r.vendor, control: r.control, amount: Number(r.amount), remarks: r.remarks, linkedProjectId: r.linked_project_id, partial: !!r.partial, ignored: !!r.ignored, deleted: !!r.deleted, isNew: !!r.is_new }));
 
   const m = meta.rows[0] || {};
   const metaObj = { version: m.version ?? 1, glPeriod: m.gl_period ?? '', cashAsOf: m.cash_as_of ? d(m.cash_as_of) : '' };

@@ -123,6 +123,7 @@ export interface GLLine {
   partial?: boolean;
   ignored?: boolean;
   deleted?: boolean;
+  isNew?: boolean;
 }
 
 export interface AppState {

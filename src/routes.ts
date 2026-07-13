@@ -498,10 +498,12 @@ api.post('/import/gl/confirm', async (req, res) => {
     const assignments: Record<string,string> = {};
     const ignoredControls = new Set<string>();
     const deletedControls = new Set<string>();
+    const knownControls = new Set<string>();
     for (const r of saved.rows) {
       if (r.linked_project_id) assignments[r.control] = r.linked_project_id;
       if (r.ignored) ignoredControls.add(r.control);
       if (r.deleted) deletedControls.add(r.control);
+      knownControls.add(r.control);
     }
 
     // Build account-code → project map for auto-matching on re-import.
@@ -550,11 +552,12 @@ api.post('/import/gl/confirm', async (req, res) => {
         }
       }
       await c.query(
-        `insert into gl_lines(id,property_code,account,category,date,vendor,control,amount,remarks,linked_project_id,partial,ignored,deleted)
-         values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,false,$11,$12)`,
+        `insert into gl_lines(id,property_code,account,category,date,vendor,control,amount,remarks,linked_project_id,partial,ignored,deleted,is_new)
+         values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,false,$11,$12,$13)`,
         [g.id, g.property, g.account || null, g.category || null, dnull(g.date), g.vendor || null, g.control || null, Number(g.amount) || 0, g.remarks || null, lp,
          !!(g.control && ignoredControls.has(g.control)),
-         !!(g.control && deletedControls.has(g.control))]
+         !!(g.control && deletedControls.has(g.control)),
+         !(g.control && knownControls.has(g.control))]
       );
     }
     console.log(`GL import: ${lines.length} lines, ${autoMatched} auto-matched by category`);
