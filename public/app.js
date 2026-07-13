@@ -1602,7 +1602,7 @@ function budgetTracker(code, glRows){
 ========================================================= */
 function viewProperty(){
   const code=VIEW.prop||S.properties[0].code;
-  if(code==='WVMO'||code==='SPMO') return viewPropertyBudgetTracker(code);
+  if(code==='WVMO'||code==='SPMO'||code==='HRMO') return viewPropertyBudgetTracker(code);
   const p=PROP(code); const c=S.cash[code]||{};
   const budget=Number(p.spBudget)||0;
   const glSpent=glSpentFor(code);
@@ -1783,6 +1783,7 @@ function viewProperty(){
 ========================================================= */
 const _BUDGET_IDS={
   WVMO:new Set(['bb644402-5eb9-4b40-85e7-56a555f20a1a','10117f84-31ff-4b2b-8c9c-bdb566851f01','22aa6995-b149-455c-b364-58725544969c','e1f4656e-a17b-4f6d-b182-48500b9c8994','90bee722-5f8e-4255-b11b-35b2a86da290','8de979e9-cfff-404b-a211-2f62706491f9','16c1b277-824b-40a5-9694-8531dbfbe072','fcbc2db6-37c5-45c1-944e-6bdb9ed1bf21','4de13189-dd1a-4074-9319-6d171ed29346','08acfbe7-a08d-4cfc-a744-c060ee425d6e','0be24236-d6af-4f6a-b8d0-a6a70233ad19']),
+  HRMO:new Set([]),
   SPMO:new Set(['0180566f-5362-4c8e-828b-520937d8e39b','41a10bc0-9b34-47b7-a7ab-c34d9473885a','02d18241-ab6d-4279-8696-26251ffba049','5bc7a20e-d582-457c-a1ac-c1c204669fb4','395106be-8007-4ba5-83e4-810cab518d3b','d8eca409-eb06-40c4-b2b4-007bf709be50','2aa21f5e-d209-41d5-bc50-05a6a9497381','a049a011-ddd5-40e7-a9c3-f6166323a905','98bfd486-4999-43d3-8b09-1dd561c4d37c','823048da-123e-4dd7-b491-e0de8b567da3','87c67135-683f-4b11-ad2c-b5e67094f371','e08a6bcd-2835-40ad-8b03-c0150e4e2020','fcd4dfe2-0d70-40e7-af72-53755bce6749']),
 };
 function viewPropertyBudgetTracker(code){
