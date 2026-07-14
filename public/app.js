@@ -242,7 +242,6 @@ function glMatchScore(g,p){
 function render(){
   const root=$('#root');
   root.innerHTML='';
-  const _pzNav=document.getElementById('_glPoolZone');if(_pzNav)_pzNav.remove();
   const app=el('div',{class:'app'});
   app.append(rail(), mainCol());
   root.append(app);
@@ -1443,25 +1442,7 @@ function openProject(id,preset){
    BUDGET TRACKER  (GL drag-and-drop assignment)
 ========================================================= */
 function budgetTracker(code, glRows){
-  // Pool zone: fixed element slides up from bottom during any GL card drag
-  const _existingPZ=document.getElementById('_glPoolZone');if(_existingPZ)_existingPZ.remove();
-  const _pz=el('div',{id:'_glPoolZone',
-    style:'position:fixed;bottom:-100px;left:50%;transform:translateX(-50%);width:300px;height:76px;'
-          +'background:rgba(0,0,0,.55);backdrop-filter:blur(6px);border:2px dashed rgba(255,255,255,.5);'
-          +'border-radius:14px;display:flex;align-items:center;justify-content:center;gap:10px;'
-          +'color:#fff;font-size:13px;font-weight:600;letter-spacing:.02em;'
-          +'z-index:8888;transition:bottom .18s ease;pointer-events:none;opacity:.92;'
-          +'cursor:copy;box-shadow:0 8px 28px rgba(0,0,0,.4)',
-    ondragover:e=>{e.preventDefault();_pz.style.borderColor='rgba(255,180,0,.9)';_pz.style.background='rgba(60,30,0,.7)';},
-    ondragleave:()=>{_pz.style.borderColor='rgba(255,255,255,.5)';_pz.style.background='rgba(0,0,0,.55)';},
-    ondrop:async e=>{
-      e.preventDefault();_pz.style.borderColor='rgba(255,255,255,.5)';_pz.style.background='rgba(0,0,0,.55)';
-      const gid=e.dataTransfer.getData('glId');if(!gid)return;
-      const g=S.gl.find(x=>x.id===gid||String(x.id)===gid);if(!g){toast('GL line not found');return;}
-      g.linkedProjectId=null;await linkGl(g,'Returned to pool');
-    }});
-  _pz.innerHTML='<span style="font-size:20px">\u21a9</span> Return to pool';
-  document.body.append(_pz);
+  /* pool zone replaced with sticky return-to-pool bar in the budget table — see below */
   /* glRows: live <tr> elements from the GL table — passed so we can
      re-render chips without a full page reload on unlink.           */
   const projs=projForProp(code).filter(p2=>!p2.inHouse);
@@ -2057,6 +2038,29 @@ function viewPropertyBudgetTracker(code){
     el('th',{style:'padding:8px 16px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600'},'Variance'))));
   const tbody=el('tbody');
 
+  /* ── Sticky "Return to Pool" bar: visible while any GL card is being dragged ── */
+  let _glDragActive=false;
+  let _draggingBudgetId2=null;
+  const _retTd=el('td',{colspan:'6',
+    style:'padding:10px 16px;background:rgba(46,125,87,.06);border:2px dashed rgba(46,125,87,.4);border-radius:6px;'
+          +'font-size:12px;font-weight:600;color:var(--green);text-align:center;cursor:copy;'
+          +'transition:background .12s,border-color .12s'},
+    '↩ Drop here to return charge to pool (unassign from any budget item)');
+  const _retBar=el('tr',{id:'_retPoolBar',
+    style:'display:none',
+    ondragover:e=>{if(!_draggingBudgetId2){e.preventDefault();_retTd.style.background='rgba(46,125,87,.18)';_retTd.style.borderColor='var(--green)';}},
+    ondragleave:()=>{_retTd.style.background='rgba(46,125,87,.06)';_retTd.style.borderColor='rgba(46,125,87,.4)';},
+    ondrop:async e=>{
+      e.preventDefault();_retTd.style.background='rgba(46,125,87,.06)';_retTd.style.borderColor='rgba(46,125,87,.4)';
+      const gid=e.dataTransfer.getData('glId');if(!gid)return;
+      const g=S.gl.find(x=>x.id===gid||String(x.id)===gid);if(!g){toast('GL line not found');return;}
+      g.linkedProjectId=null;await linkGl(g,'Returned to pool ✓');
+    }});
+  _retBar.append(_retTd);
+  tbody.append(_retBar);
+  const _showRetBar=()=>{_glDragActive=true;_retBar.style.display='';};
+  const _hideRetBar=()=>{_glDragActive=false;_retBar.style.display='none';_retTd.style.background='rgba(46,125,87,.06)';_retTd.style.borderColor='rgba(46,125,87,.4)';};
+
   let _draggingBudgetId=null;
   let _budgetCustomOrder=[];try{_budgetCustomOrder=JSON.parse(localStorage.getItem('wvmo_budget_order_v1')||'[]');}catch(_e){}
   const sorted=[...budgetItems].sort((a,b)=>{const ai=_budgetCustomOrder.indexOf(a.id),bi2=_budgetCustomOrder.indexOf(b.id);if(ai>=0&&bi2>=0)return ai-bi2;if(ai>=0)return-1;if(bi2>=0)return 1;return(a.category||'').localeCompare(b.category||'')||((Number(b.anticipatedCost)||0)-(Number(a.anticipatedCost)||0));});
@@ -2102,8 +2106,8 @@ function viewPropertyBudgetTracker(code){
           if(newVal!==undefined&&newVal.trim()&&newVal.trim()!==pr.category){pr.category=newVal.trim();await saveProject(pr,'Account updated');}
           acctTd.innerHTML='';
           const handle=el('span',{draggable:'true',title:'Drag to reorder',style:'cursor:grab;color:var(--ink-3);font-size:14px;margin-right:5px;user-select:none;flex-shrink:0;opacity:.5',
-            ondragstart:e=>{e.stopPropagation();e.dataTransfer.setData('budgetRowId',pr.id);e.dataTransfer.effectAllowed='move';_draggingBudgetId=pr.id;handle.style.opacity='1';},
-            ondragend:()=>{_draggingBudgetId=null;handle.style.opacity='.5';}
+            ondragstart:e=>{e.stopPropagation();e.dataTransfer.setData('budgetRowId',pr.id);e.dataTransfer.effectAllowed='move';_draggingBudgetId=pr.id;_draggingBudgetId2=pr.id;handle.style.opacity='1';},
+            ondragend:()=>{_draggingBudgetId=null;_draggingBudgetId2=null;handle.style.opacity='.5';}
           },'⠿');
           const wrap=el('div',{style:'display:flex;align-items:center'});
           const lbl=el('span',{style:'font-size:11.5px;color:var(--ink-2);cursor:text;line-height:1.3',title:'Click to edit account code'},pr.category||'—');
@@ -2150,8 +2154,8 @@ function viewPropertyBudgetTracker(code){
         lgs2.forEach(g=>{
           const gidStr2=String(g.id);
           const chip=el('div',{draggable:'true',title:'Drag to reassign to another budget item',style:'display:flex;flex-direction:column;background:var(--green-soft);border:1px solid rgba(46,125,87,.3);border-radius:8px;padding:6px 10px;font-size:12px;min-width:160px;max-width:260px;gap:2px;cursor:grab',
-            ondragstart:e=>{e.dataTransfer.setData('glId',gidStr2);e.dataTransfer.effectAllowed='link';chip.style.opacity='.4';chip.style.cursor='grabbing';const _pz2=document.getElementById('_glPoolZone');if(_pz2){_pz2.style.bottom='12px';_pz2.style.pointerEvents='auto';}},
-            ondragend:()=>{chip.style.opacity='1';chip.style.cursor='grab';const _pz2=document.getElementById('_glPoolZone');if(_pz2){_pz2.style.bottom='-100px';_pz2.style.pointerEvents='none';_pz2.style.borderColor='rgba(255,255,255,.5)';_pz2.style.background='rgba(0,0,0,.55)';}}});
+            ondragstart:e=>{e.dataTransfer.setData('glId',gidStr2);e.dataTransfer.effectAllowed='link';chip.style.opacity='.4';chip.style.cursor='grabbing';_showRetBar();},
+            ondragend:()=>{chip.style.opacity='1';chip.style.cursor='grab';_hideRetBar();}});
           const topRow=el('div',{style:'display:flex;align-items:center;gap:6px;flex-wrap:wrap'});
           topRow.append(
             el('span',{style:'color:var(--ink-3);font-size:10px;cursor:grab',title:'Drag to move'},'⠿'),
@@ -2219,7 +2223,9 @@ function viewPropertyBudgetTracker(code){
         ondrop:async e=>{e.preventDefault();mainRow.style.background='rgba(180,120,0,.05)';
           const gid=e.dataTransfer.getData('glId');if(!gid)return;
           const g=S.gl.find(x=>x.id===gid||String(x.id)===gid);if(!g)return;
-          g.linkedProjectId=null;await linkGl(g,'Returned to unassigned pool');}});
+          // If the chip is already assigned, confirm before unassigning (use the green Return to Pool bar instead)
+          if(g.linkedProjectId){toast('Use the green “Return to Pool” bar at the top of the table to unassign');return;}
+          g.linkedProjectId=null;await linkGl(g,'Returned to unassigned pool ✓');}});
       mainRow.append(
         el('td',{style:'padding:7px 12px;font-size:11px;color:var(--amber);font-family:var(--mono)'},grp.key),
         el('td',{style:'padding:7px 12px;font-size:12px;color:var(--ink-2)'},
@@ -2246,8 +2252,8 @@ function viewPropertyBudgetTracker(code){
             const gs2=String(g.id);
             const chip2=el('div',{draggable:'true',title:'Drag to assign to a budget item',
               style:'display:flex;flex-direction:column;background:rgba(180,120,0,.08);border:1px solid rgba(180,120,0,.3);border-radius:8px;padding:6px 10px;font-size:12px;min-width:160px;max-width:260px;gap:2px;cursor:grab',
-              ondragstart:e=>{e.dataTransfer.setData('glId',gs2);e.dataTransfer.effectAllowed='link';chip2.style.opacity='.4';const _pz2=document.getElementById('_glPoolZone');if(_pz2){_pz2.style.bottom='12px';_pz2.style.pointerEvents='auto';}},
-              ondragend:()=>{chip2.style.opacity='1';const _pz2=document.getElementById('_glPoolZone');if(_pz2){_pz2.style.bottom='-100px';_pz2.style.pointerEvents='none';_pz2.style.borderColor='rgba(255,255,255,.5)';_pz2.style.background='rgba(0,0,0,.55)';}}});
+              ondragstart:e=>{e.dataTransfer.setData('glId',gs2);e.dataTransfer.effectAllowed='link';chip2.style.opacity='.4';_showRetBar();},
+              ondragend:()=>{chip2.style.opacity='1';_hideRetBar();}});
             const tr2=el('div',{style:'display:flex;align-items:center;gap:6px;flex-wrap:wrap'});
             tr2.append(el('span',{style:'color:var(--ink-3);font-size:10px'},'⠿'),
               el('span',{class:'mono',style:'font-weight:700;color:var(--amber);font-size:13px'},fmt(g.amount,false)),
@@ -2259,16 +2265,7 @@ function viewPropertyBudgetTracker(code){
           });
           lCol.append(cw);
         }
-        const ubDz=el('div',{
-          style:'border:2px dashed rgba(180,120,0,.35);border-radius:8px;padding:8px 14px;font-size:12px;color:var(--ink-3);text-align:center;margin-bottom:8px;transition:all .15s',
-          ondragover:e=>{if(!_draggingBudgetId){e.preventDefault();ubDz.style.borderColor='var(--amber)';ubDz.style.background='rgba(180,120,0,.08)';}},
-          ondragleave:()=>{ubDz.style.borderColor='rgba(180,120,0,.35)';ubDz.style.background='';},
-          ondrop:async e=>{e.preventDefault();ubDz.style.borderColor='rgba(180,120,0,.35)';ubDz.style.background='';
-            const gid=e.dataTransfer.getData('glId');if(!gid)return;
-            const g=S.gl.find(x=>x.id===gid||String(x.id)===gid);if(!g)return;
-            g.linkedProjectId=null;await linkGl(g,'Returned to unassigned pool');}
-        },'⬇ Drop here to unassign from budget item');
-        lCol.append(ubDz);
+        /* ubDz removed — use green Return to Pool bar at top of budget table */
         lCol.append(el('button',{class:'btn sm',style:'font-size:11px;margin-top:4px',
           onclick:async e=>{e.stopPropagation();
             const nm=prompt('Name for this budget item:',grp.label.replace(/^SP\s*/i,'').slice(0,60));
@@ -2448,8 +2445,8 @@ function viewPropertyBudgetTracker(code){
       const glRow=el('tr',{
         draggable:'true',
         style:'cursor:grab'+(linked?';opacity:.6':'')+(g.isNew?';border-left:3px solid var(--green)':''),
-        ondragstart:e=>{e.dataTransfer.setData('glId',gidStr);e.dataTransfer.effectAllowed='link';glRow.style.opacity='.35';const _pz2=document.getElementById('_glPoolZone');if(_pz2){_pz2.style.bottom='12px';_pz2.style.pointerEvents='auto';}},
-        ondragend:()=>{glRow.style.opacity=linked?'.6':'1';const _pz2=document.getElementById('_glPoolZone');if(_pz2){_pz2.style.bottom='-100px';_pz2.style.pointerEvents='none';_pz2.style.borderColor='rgba(255,255,255,.5)';_pz2.style.background='rgba(0,0,0,.55)';}}
+        ondragstart:e=>{e.dataTransfer.setData('glId',gidStr);e.dataTransfer.effectAllowed='link';glRow.style.opacity='.35';_showRetBar();},
+        ondragend:()=>{glRow.style.opacity=linked?'.6':'1';_hideRetBar();}
       });
       glRow.append(
         el('td',{style:'padding:4px 8px;width:32px'},cb),
