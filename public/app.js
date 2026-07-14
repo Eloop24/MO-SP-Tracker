@@ -2222,12 +2222,11 @@ function viewPropertyBudgetTracker(code){
         onclick:()=>{ubExpanded=!ubExpanded;detailRow2.style.display=ubExpanded?'':'none';chevron.textContent=ubExpanded?'▲':'▼';},
         ondragover:e=>{if(!_draggingBudgetId){e.preventDefault();mainRow.style.background='rgba(180,120,0,.12)';}},
         ondragleave:()=>{mainRow.style.background='rgba(180,120,0,.05)';},
-        ondrop:async e=>{e.preventDefault();mainRow.style.background='rgba(180,120,0,.05)';
+        ondrop:async e=>{e.preventDefault();mainRow.style.background='rgba(180,120,0,.05)';mainRow.style.outline='';
           const gid=e.dataTransfer.getData('glId');if(!gid)return;
           const g=S.gl.find(x=>x.id===gid||String(x.id)===gid);if(!g)return;
-          // If the chip is already assigned, confirm before unassigning (use the green Return to Pool bar instead)
-          if(g.linkedProjectId){toast('Use the green “Return to Pool” bar at the top of the table to unassign');return;}
-          g.linkedProjectId=null;await linkGl(g,'Returned to unassigned pool ✓');}});
+          if(!g.linkedProjectId)return; // already unassigned, nothing to do
+          g.linkedProjectId=null;await linkGl(g,'Returned to pool ✓');}});
       mainRow.append(
         el('td',{style:'padding:7px 12px;font-size:11px;color:var(--amber);font-family:var(--mono)'},grp.key),
         el('td',{style:'padding:7px 12px;font-size:12px;color:var(--ink-2)'},
