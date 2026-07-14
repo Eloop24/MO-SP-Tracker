@@ -2261,6 +2261,9 @@ function viewPropertyBudgetTracker(code){
             if(g.date)tr2.append(el('span',{style:'color:var(--ink-3);font-size:11px;margin-left:auto'},g.date));
             chip2.append(tr2);
             if(g.remarks)chip2.append(el('div',{style:'font-size:11px;color:var(--ink-2);font-style:italic;border-top:1px solid rgba(180,120,0,.15);padding-top:4px;margin-top:2px'},'"'+g.remarks.slice(0,65)+(g.remarks.length>65?'…':'')+'"'));
+            const actRow2=el('div',{style:'display:flex;gap:5px;margin-top:4px;padding-top:4px;border-top:1px solid rgba(180,120,0,.15)'});
+            actRow2.append(el('button',{class:'btn ghost sm',style:'font-size:11px',onclick:e=>{e.stopPropagation();showMoveMenu(g,chip2,null,()=>afterWrite('GL assigned ✓'),code);}},'→ Assign to…'));
+            chip2.append(actRow2);
             cw.append(chip2);
           });
           lCol.append(cw);
@@ -2488,22 +2491,38 @@ function viewPropertyBudgetTracker(code){
   return {bar,body};
 }
 
-/* small floating "Move to…" menu */
-function showMoveMenu(g, anchor, currentPr, onDone){
+/* small floating "Move to…" menu
+   currentPr: the budget item the chip currently belongs to (null if unbudgeted)
+   propCode:  property code (required when currentPr is null)               */
+function showMoveMenu(g, anchor, currentPr, onDone, propCode){
   const existing=document.getElementById('_moveMenu'); if(existing)existing.remove();
-  const _mProp=currentPr.property||'WVMO';const _mIds=_BUDGET_IDS[_mProp]||new Set();const items=projForProp(_mProp).filter(p2=>(p2.isBudgetItem||_mIds.has(p2.id))&&p2.id!==currentPr.id);
-  if(!items.length){toast('No other budget items to move to');return;}
+  const _mProp=(currentPr&&currentPr.property)||propCode||'WVMO';
+  const _mIds=_BUDGET_IDS[_mProp]||new Set();
+  // Show all budget items; exclude current if chip is already assigned
+  const items=projForProp(_mProp).filter(p2=>(p2.isBudgetItem||_mIds.has(p2.id))&&(currentPr?p2.id!==currentPr.id:true));
+  const hasItems=items.length>0;
+  const isAssigned=!!(currentPr);
+  if(!hasItems&&!isAssigned){toast('No budget items found for this property');return;}
   const rect=anchor.getBoundingClientRect();
-  const menu=el('div',{id:'_moveMenu',style:`position:fixed;z-index:9999;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);min-width:200px;top:${rect.bottom+4}px;left:${rect.left}px;overflow:hidden`});
+  // Flip up if near bottom of viewport
+  const spaceBelow=window.innerHeight-rect.bottom;
+  const topPos=spaceBelow<280?Math.max(8,rect.top-280):(rect.bottom+4);
+  const menu=el('div',{id:'_moveMenu',style:`position:fixed;z-index:9999;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);min-width:220px;max-width:320px;top:${topPos}px;left:${Math.min(rect.left,window.innerWidth-330)}px;overflow:hidden`});
   const close=()=>menu.remove();
-  menu.append(el('div',{style:'padding:7px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3);font-weight:600;border-bottom:1px solid var(--line-2)'},'Move to…'));
-  const scrollList=el('div',{style:'max-height:260px;overflow-y:auto'});
+  menu.append(el('div',{style:'padding:7px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3);font-weight:600;border-bottom:1px solid var(--line-2)'},isAssigned?'Move to…':'Assign to…'));
+  const scrollList=el('div',{style:'max-height:240px;overflow-y:auto'});
   items.sort((a,b)=>(a.name||'').localeCompare(b.name||'')).forEach(pr=>{
     scrollList.append(el('button',{class:'btn ghost',style:'width:100%;text-align:left;border-radius:0;border:0;border-bottom:1px solid var(--line-2);padding:8px 14px;font-size:13px',
-      onclick:async()=>{close();g.linkedProjectId=pr.id;await linkGl(g,'GL moved · '+pr.name);onDone&&onDone();}
+      onclick:async()=>{close();g.linkedProjectId=pr.id;await linkGl(g,'GL moved → '+pr.name);onDone&&onDone();}
     },pr.name));
   });
   menu.append(scrollList);
+  // "Return to pool" option only for chips that are currently assigned
+  if(isAssigned){
+    menu.append(el('button',{class:'btn ghost',style:'width:100%;text-align:left;border-radius:0;border:0;padding:8px 14px;font-size:13px;color:var(--rust);font-style:italic',
+      onclick:async()=>{close();g.linkedProjectId=null;await linkGl(g,'Returned to pool ✓');onDone&&onDone();}
+    },'↩ Return to pool (unassign)'));
+  }
   document.body.append(menu);
   const dismiss=e=>{if(!menu.contains(e.target)){close();document.removeEventListener('click',dismiss);}};
   setTimeout(()=>document.addEventListener('click',dismiss),0);
