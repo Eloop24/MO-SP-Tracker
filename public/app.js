@@ -2220,13 +2220,22 @@ function viewPropertyBudgetTracker(code){
       const chevron=el('span',{style:'color:var(--ink-3);font-size:10px;margin-left:4px;user-select:none'},'▼');
       const mainRow=el('tr',{style:'background:rgba(180,120,0,.05);border-bottom:1px solid var(--line-2);cursor:pointer',
         onclick:()=>{ubExpanded=!ubExpanded;detailRow2.style.display=ubExpanded?'':'none';chevron.textContent=ubExpanded?'▲':'▼';},
-        ondragover:e=>{if(!_draggingBudgetId){e.preventDefault();mainRow.style.background='rgba(180,120,0,.12)';}},
-        ondragleave:()=>{mainRow.style.background='rgba(180,120,0,.05)';},
+        ondragover:e=>{if(!_draggingBudgetId){e.preventDefault();if(_draggingFromPrId){mainRow.style.background='rgba(46,125,87,.12)';mainRow.style.outline='2px dashed var(--green)';}else{mainRow.style.background='rgba(180,120,0,.12)';mainRow.style.outline='2px dashed var(--amber)';}}},
+        ondragleave:()=>{mainRow.style.background='rgba(180,120,0,.05)';mainRow.style.outline='';},
         ondrop:async e=>{e.preventDefault();mainRow.style.background='rgba(180,120,0,.05)';mainRow.style.outline='';
           const gid=e.dataTransfer.getData('glId');if(!gid)return;
           const g=S.gl.find(x=>x.id===gid||String(x.id)===gid);if(!g)return;
-          if(!g.linkedProjectId)return; // already unassigned, nothing to do
-          g.linkedProjectId=null;await linkGl(g,'Returned to pool ✓');}});
+          if(g.linkedProjectId){
+            // Assigned chip dropped on pool group → unassign
+            g.linkedProjectId=null;await linkGl(g,'Returned to pool ✓');
+          } else {
+            // Unbudgeted chip dropped on a different group → assign to matching budget item
+            const _grpCode=(grp.key||'').match(/^\d{4}/);
+            const _matchBi=_grpCode?budgetItems.find(bi=>biAcct(bi)===_grpCode[0]):null;
+            if(!_matchBi){toast('No budget item found for account '+grp.key+' — try “Assign to…” on the card');return;}
+            if(g.linkedProjectId===_matchBi.id)return;
+            g.linkedProjectId=_matchBi.id;await linkGl(g,'Moved → '+_matchBi.name);
+          }}});
       mainRow.append(
         el('td',{style:'padding:7px 12px;font-size:11px;color:var(--amber);font-family:var(--mono)'},grp.key),
         el('td',{style:'padding:7px 12px;font-size:12px;color:var(--ink-2)'},
