@@ -2062,6 +2062,7 @@ function viewPropertyBudgetTracker(code){
   const _hideRetBar=()=>{_glDragActive=false;_retBar.style.display='none';_retTd.style.background='rgba(46,125,87,.06)';_retTd.style.borderColor='rgba(46,125,87,.4)';};
 
   let _draggingBudgetId=null;
+  let _draggingFromPrId=null; // set to pr.id when dragging a chip from a budget item
   let _budgetCustomOrder=[];try{_budgetCustomOrder=JSON.parse(localStorage.getItem('wvmo_budget_order_v1')||'[]');}catch(_e){}
   const sorted=[...budgetItems].sort((a,b)=>{const ai=_budgetCustomOrder.indexOf(a.id),bi2=_budgetCustomOrder.indexOf(b.id);if(ai>=0&&bi2>=0)return ai-bi2;if(ai>=0)return-1;if(bi2>=0)return 1;return(a.category||'').localeCompare(b.category||'')||((Number(b.anticipatedCost)||0)-(Number(a.anticipatedCost)||0));});
   sorted.forEach(pr=>{
@@ -2086,7 +2087,8 @@ function viewPropertyBudgetTracker(code){
         if(bid&&bid!==pr.id){const ids=sorted.map(x=>x.id);const fi=ids.indexOf(bid),ti=ids.indexOf(pr.id);if(fi>=0&&ti>=0){ids.splice(fi,1);ids.splice(ti,0,bid);}localStorage.setItem('wvmo_budget_order_v1',JSON.stringify(ids));render();return;}
         const gid=e.dataTransfer.getData('glId');if(!gid)return;
         const g=S.gl.find(x=>x.id===gid||String(x.id)===gid);if(!g){toast('GL line not found');return;}
-        g.linkedProjectId=pr.id;await linkGl(g,'GL assigned · '+pr.name);
+        if(g.linkedProjectId===pr.id)return; // already here, skip
+        g.linkedProjectId=pr.id;await linkGl(g,'GL moved → '+pr.name);
       }
     });
 
@@ -2154,8 +2156,8 @@ function viewPropertyBudgetTracker(code){
         lgs2.forEach(g=>{
           const gidStr2=String(g.id);
           const chip=el('div',{draggable:'true',title:'Drag to reassign to another budget item',style:'display:flex;flex-direction:column;background:var(--green-soft);border:1px solid rgba(46,125,87,.3);border-radius:8px;padding:6px 10px;font-size:12px;min-width:160px;max-width:260px;gap:2px;cursor:grab',
-            ondragstart:e=>{e.dataTransfer.setData('glId',gidStr2);e.dataTransfer.effectAllowed='link';chip.style.opacity='.4';chip.style.cursor='grabbing';_showRetBar();},
-            ondragend:()=>{chip.style.opacity='1';chip.style.cursor='grab';_hideRetBar();}});
+            ondragstart:e=>{e.dataTransfer.setData('glId',gidStr2);e.dataTransfer.effectAllowed='link';chip.style.opacity='.4';chip.style.cursor='grabbing';_draggingFromPrId=pr.id;_showRetBar();},
+            ondragend:()=>{chip.style.opacity='1';chip.style.cursor='grab';_draggingFromPrId=null;_hideRetBar();}});
           const topRow=el('div',{style:'display:flex;align-items:center;gap:6px;flex-wrap:wrap'});
           topRow.append(
             el('span',{style:'color:var(--ink-3);font-size:10px;cursor:grab',title:'Drag to move'},'⠿'),
@@ -2176,9 +2178,9 @@ function viewPropertyBudgetTracker(code){
       /* drop zone */
       const dz=el('div',{
         style:'border:2px dashed var(--line);border-radius:8px;padding:10px 16px;font-size:12px;color:var(--ink-3);text-align:center;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:6px',
-        ondragover:e=>{if(!_draggingBudgetId){e.preventDefault();dz.style.background='var(--wheat-soft)';dz.style.borderColor='var(--wheat)';dz.style.color='var(--wheat)';}},
+        ondragover:e=>{if(!_draggingBudgetId&&_draggingFromPrId!==pr.id){e.preventDefault();dz.style.background='var(--wheat-soft)';dz.style.borderColor='var(--wheat)';dz.style.color='var(--wheat)';dz.textContent='';dz.append(el('span',{style:'font-size:14px'},'⬇'),el('span',{},'Drop here → '+pr.name.slice(0,30)));}},
         ondragleave:()=>{dz.style.background='';dz.style.borderColor='var(--line)';dz.style.color='var(--ink-3)';},
-        ondrop:async e=>{e.preventDefault();dz.style.background='';dz.style.borderColor='var(--line)';dz.style.color='var(--ink-3)';const gid=e.dataTransfer.getData('glId');if(!gid)return;const g=S.gl.find(x=>x.id===gid||String(x.id)===gid);if(!g){toast('GL line not found');return;}g.linkedProjectId=pr.id;await linkGl(g,'GL assigned · '+pr.name);redrawDetail();}
+        ondrop:async e=>{e.preventDefault();dz.style.background='';dz.style.borderColor='var(--line)';dz.style.color='var(--ink-3)';dz.innerHTML='';dz.append(el('span',{style:'font-size:14px'},'⬇'),el('span',{},'Drop GL lines here to assign spend'));const gid=e.dataTransfer.getData('glId');if(!gid)return;if(_draggingFromPrId===pr.id)return;const g=S.gl.find(x=>x.id===gid||String(x.id)===gid);if(!g){toast('GL line not found');return;}g.linkedProjectId=pr.id;await linkGl(g,'GL moved → '+pr.name);redrawDetail();}
       },
         el('span',{style:'font-size:14px'},'⬇'),
         el('span',{},'Drop GL lines here to assign spend'));
