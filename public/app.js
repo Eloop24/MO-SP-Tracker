@@ -356,7 +356,7 @@ function rail(){
     S.properties.filter(p=>p.region===reg).forEach(p=>{
       const b=el('button',{class:(VIEW.tab==='property'&&VIEW.prop===p.code)?'on':'',onclick:()=>{VIEW.tab='property';VIEW.prop=p.code;VIEW.railOpen=false;render();}},
         el('span',{class:'ic',style:`color:${pcolor(p.code)}`},'●'), el('span',{},p.code),
-        el('span',{class:'ct'},String(projForProp(p.code).filter(x=>!isComplete(x)).length)));
+        el('span',{class:'ct'},String(projForProp(p.code).filter(x=>!isComplete(x)&&!x.isBudgetItem).length||'')));
       nav.append(b);
     });
   });
