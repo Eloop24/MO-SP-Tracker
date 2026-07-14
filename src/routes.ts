@@ -463,6 +463,13 @@ api.patch('/gl/:id/link', async (req, res) => {
   res.json({ ok: true });
 });
 
+api.patch('/gl/:id/account', async (req, res) => {
+  const { account, category } = req.body || {};
+  await query('update gl_lines set account=$1, category=$2 where id=$3',
+    [account || null, category || null, req.params.id]);
+  res.json({ ok: true });
+});
+
 /* ---------- imports: preview + confirm (server-side parse, spec §8/§10.4) ---------- */
 interface Pending { kind: 'gl' | 'cushion'; data: any; ts: number; }
 const pending = new Map<string, Pending>();

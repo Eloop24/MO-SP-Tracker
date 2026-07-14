@@ -2063,6 +2063,7 @@ function viewPropertyBudgetTracker(code){
 
   let _draggingBudgetId=null;
   let _draggingFromPrId=null; // set to pr.id when dragging a chip from a budget item
+  let _draggingUnbgdKey=null; // set to grp.key when dragging an unbudgeted chip
   let _budgetCustomOrder=[];try{_budgetCustomOrder=JSON.parse(localStorage.getItem('wvmo_budget_order_v1')||'[]');}catch(_e){}
   const sorted=[...budgetItems].sort((a,b)=>{const ai=_budgetCustomOrder.indexOf(a.id),bi2=_budgetCustomOrder.indexOf(b.id);if(ai>=0&&bi2>=0)return ai-bi2;if(ai>=0)return-1;if(bi2>=0)return 1;return(a.category||'').localeCompare(b.category||'')||((Number(b.anticipatedCost)||0)-(Number(a.anticipatedCost)||0));});
   sorted.forEach(pr=>{
@@ -2226,15 +2227,16 @@ function viewPropertyBudgetTracker(code){
           const gid=e.dataTransfer.getData('glId');if(!gid)return;
           const g=S.gl.find(x=>x.id===gid||String(x.id)===gid);if(!g)return;
           if(g.linkedProjectId){
-            // Assigned chip dropped on pool group → unassign
+            // Assigned chip → unassign (return to pool)
             g.linkedProjectId=null;await linkGl(g,'Returned to pool ✓');
           } else {
-            // Unbudgeted chip dropped on a different group → assign to matching budget item
-            const _grpCode=(grp.key||'').match(/^\d{4}/);
-            const _matchBi=_grpCode?budgetItems.find(bi=>biAcct(bi)===_grpCode[0]):null;
-            if(!_matchBi){toast('No budget item found for account '+grp.key+' — try “Assign to…” on the card');return;}
-            if(g.linkedProjectId===_matchBi.id)return;
-            g.linkedProjectId=_matchBi.id;await linkGl(g,'Moved → '+_matchBi.name);
+            // Unbudgeted chip → move to different account group
+            if(_draggingUnbgdKey===grp.key)return; // same group, no-op
+            const _oldAcct=g.account;const _oldCat=g.category;
+            g.account=grp.key;g.category=grp.label;
+            const _r=await fetch('/api/gl/'+g.id+'/account',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({account:grp.key,category:grp.label})});
+            if(!_r.ok){g.account=_oldAcct;g.category=_oldCat;toast('Error moving GL line');return;}
+            await afterWrite('Moved → '+grp.label);
           }}});
       mainRow.append(
         el('td',{style:'padding:7px 12px;font-size:11px;color:var(--amber);font-family:var(--mono)'},grp.key),
@@ -2262,8 +2264,8 @@ function viewPropertyBudgetTracker(code){
             const gs2=String(g.id);
             const chip2=el('div',{draggable:'true',title:'Drag to assign to a budget item',
               style:'display:flex;flex-direction:column;background:rgba(180,120,0,.08);border:1px solid rgba(180,120,0,.3);border-radius:8px;padding:6px 10px;font-size:12px;min-width:160px;max-width:260px;gap:2px;cursor:grab',
-              ondragstart:e=>{e.dataTransfer.setData('glId',gs2);e.dataTransfer.effectAllowed='link';chip2.style.opacity='.4';_showRetBar();},
-              ondragend:()=>{chip2.style.opacity='1';_hideRetBar();}});
+              ondragstart:e=>{e.dataTransfer.setData('glId',gs2);e.dataTransfer.effectAllowed='link';chip2.style.opacity='.4';_draggingUnbgdKey=grp.key;_showRetBar();},
+              ondragend:()=>{chip2.style.opacity='1';_draggingUnbgdKey=null;_hideRetBar();}});
             const tr2=el('div',{style:'display:flex;align-items:center;gap:6px;flex-wrap:wrap'});
             tr2.append(el('span',{style:'color:var(--ink-3);font-size:10px'},'⠿'),
               el('span',{class:'mono',style:'font-weight:700;color:var(--amber);font-size:13px'},fmt(g.amount,false)),
