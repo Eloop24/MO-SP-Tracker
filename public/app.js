@@ -1782,6 +1782,7 @@ function viewProperty(){
 /* =========================================================
    WVMO — PILOT: active-projects + budget-tracker layout
 ========================================================= */
+const _GL_FILTER_STATE={};
 const _BUDGET_IDS={
   WVMO:new Set(['bb644402-5eb9-4b40-85e7-56a555f20a1a','10117f84-31ff-4b2b-8c9c-bdb566851f01','22aa6995-b149-455c-b364-58725544969c','e1f4656e-a17b-4f6d-b182-48500b9c8994','90bee722-5f8e-4255-b11b-35b2a86da290','8de979e9-cfff-404b-a211-2f62706491f9','16c1b277-824b-40a5-9694-8531dbfbe072','fcbc2db6-37c5-45c1-944e-6bdb9ed1bf21','4de13189-dd1a-4074-9319-6d171ed29346','08acfbe7-a08d-4cfc-a744-c060ee425d6e','0be24236-d6af-4f6a-b8d0-a6a70233ad19']),
   HRMO:new Set([]),
@@ -2355,24 +2356,28 @@ function viewPropertyBudgetTracker(code){
     if(!matched) toast('No GL lines matched — check account codes on the budget items');
     else toast(`Matched ${matched} GL line${matched===1?'':'s'}`);
   }
-  let glShowUnassignedOnly=false;
-  let glCollapsed=false;
-  let glShowContra=false;
-  let glShowIgnored=false;
-  let glShowDeleted=false;
-  let glShowAll=false;
-  let glShowNew=false;
-  const contraLines=allGls.filter(g=>Number(g.amount)<0&&!g.linkedProjectId&&!g.ignored);
-  const positiveGls=allGls.filter(g=>Number(g.amount)>=0&&!g.ignored);
-  const ignoredGls=allGls.filter(g=>g.ignored);
-  const deletedGls=S.gl.filter(g=>g.property===code&&g.deleted);
-  const newGls=allGls.filter(g=>g.isNew&&!g.ignored);
+  const _gfs=_GL_FILTER_STATE[code]=_GL_FILTER_STATE[code]||{};
+  let glShowUnassignedOnly=_gfs.unassigned||false;
+  let glCollapsed=_gfs.collapsed||false;
+  let glShowContra=_gfs.contra||false;
+  let glShowIgnored=_gfs.ignored||false;
+  let glShowDeleted=_gfs.deleted||false;
+  let glShowAll=_gfs.all||false;
+  let glShowNew=_gfs.newOnly||false;
+  /* filter arrays computed fresh inside glHeader() and rebuildGLTable() */
   const glChecked=new Set(); // GL line IDs checked for batch match
   const glHeader=()=>{
+    // Recompute fresh every call so mutations are reflected
+    const contraLines=allGls.filter(g=>Number(g.amount)<0&&!g.linkedProjectId&&!g.ignored);
+    const positiveGls=allGls.filter(g=>Number(g.amount)>=0&&!g.ignored);
+    const ignoredGls=allGls.filter(g=>g.ignored);
+    const deletedGls=S.gl.filter(g=>g.property===code&&g.deleted);
+    const newGls=allGls.filter(g=>g.isNew&&!g.ignored);
+    const unassigned=allGls.filter(g=>!g.linkedProjectId&&!g.account&&!g.category&&Number(g.amount)>0&&!g.ignored);
     const checkedCount=glChecked.size;
     const h=el('div',{class:'ph'});
     const _hItems=[
-      el('h3',{style:'cursor:pointer;user-select:none',title:glCollapsed?'Expand GL section':'Collapse GL section',onclick:()=>{glCollapsed=!glCollapsed;rebuildGLTable();}},
+      el('h3',{style:'cursor:pointer;user-select:none',title:glCollapsed?'Expand GL section':'Collapse GL section',onclick:()=>{glCollapsed=!glCollapsed;_gfs.collapsed=glCollapsed;rebuildGLTable();}},
         (glCollapsed?'▶':'▼')+' General Ledger'),
       el('div',{class:'sp'}),
       el('span',{class:'chip',style:'cursor:default'},positiveGls.length+' lines'+(contraLines.length?' · '+contraLines.length+' contra':'')),
@@ -2380,32 +2385,32 @@ function viewPropertyBudgetTracker(code){
       unassigned.length
         ?el('button',{class:'btn'+(glShowUnassignedOnly?' accent':' ghost')+' sm',style:'font-size:12px',
             title:glShowUnassignedOnly?'Show all GL lines':'Show only unassigned GL lines',
-            onclick:()=>{glShowUnassignedOnly=!glShowUnassignedOnly;rebuildGLTable();}},
+            onclick:()=>{glShowUnassignedOnly=!glShowUnassignedOnly;_gfs.unassigned=glShowUnassignedOnly;rebuildGLTable();}},
             unassigned.length+' unassigned')
         :el('span',{class:'chip done'},'all assigned'),
       newGls.length?el('button',{class:'btn'+(glShowNew?' accent':' ghost')+' sm',style:'font-size:11px;color:var(--green)',
           title:glShowNew?'Back to full view':'Show only new lines from latest upload',
-          onclick:()=>{glShowNew=!glShowNew;glShowUnassignedOnly=false;glShowContra=false;glShowIgnored=false;glShowDeleted=false;glShowAll=false;rebuildGLTable();}},
+          onclick:()=>{glShowNew=!glShowNew;glShowUnassignedOnly=false;glShowContra=false;glShowIgnored=false;glShowDeleted=false;glShowAll=false;Object.assign(_gfs,{newOnly:glShowNew,unassigned:false,contra:false,ignored:false,deleted:false,all:false});rebuildGLTable();}},
           newGls.length+' new ✨')
         :undefined,
       contraLines.length?el('button',{class:'btn'+(glShowContra?' accent':' ghost')+' sm',style:'font-size:11px',
           title:glShowContra?'Back to normal view':'Show '+contraLines.length+' unassigned contra/credit entries',
-          onclick:()=>{glShowContra=!glShowContra;glShowUnassignedOnly=false;glShowIgnored=false;glShowDeleted=false;glShowAll=false;glShowNew=false;rebuildGLTable();}},
+          onclick:()=>{glShowContra=!glShowContra;glShowUnassignedOnly=false;glShowIgnored=false;glShowDeleted=false;glShowAll=false;glShowNew=false;Object.assign(_gfs,{contra:glShowContra,unassigned:false,ignored:false,deleted:false,all:false,newOnly:false});rebuildGLTable();}},
           contraLines.length+' contra')
         :undefined,
       ignoredGls.length?el('button',{class:'btn'+(glShowIgnored?' accent':' ghost')+' sm',style:'font-size:11px;color:var(--ink-3)',
           title:glShowIgnored?'Hide ignored lines':'Show '+ignoredGls.length+' ignored lines',
-          onclick:()=>{glShowIgnored=!glShowIgnored;glShowContra=false;glShowUnassignedOnly=false;glShowDeleted=false;glShowAll=false;rebuildGLTable();}},
+          onclick:()=>{glShowIgnored=!glShowIgnored;glShowContra=false;glShowUnassignedOnly=false;glShowDeleted=false;glShowAll=false;glShowNew=false;Object.assign(_gfs,{ignored:glShowIgnored,contra:false,unassigned:false,deleted:false,all:false,newOnly:false});rebuildGLTable();}},
           ignoredGls.length+' ignored')
         :undefined,
       deletedGls.length?el('button',{class:'btn'+(glShowDeleted?' accent':' ghost')+' sm',style:'font-size:11px;color:var(--rust)',
           title:glShowDeleted?'Hide deleted lines':'Show '+deletedGls.length+' deleted (undo)',
-          onclick:()=>{glShowDeleted=!glShowDeleted;glShowContra=false;glShowUnassignedOnly=false;glShowIgnored=false;glShowAll=false;rebuildGLTable();}},
+          onclick:()=>{glShowDeleted=!glShowDeleted;glShowContra=false;glShowUnassignedOnly=false;glShowIgnored=false;glShowAll=false;glShowNew=false;Object.assign(_gfs,{deleted:glShowDeleted,contra:false,unassigned:false,ignored:false,all:false,newOnly:false});rebuildGLTable();}},
           deletedGls.length+' deleted')
         :undefined,
       el('button',{class:'btn'+(glShowAll?' accent':' ghost')+' sm',style:'font-size:11px',
           title:glShowAll?'Back to normal view':'Show all GL lines including negatives and sweeps',
-          onclick:()=>{glShowAll=!glShowAll;glShowContra=false;glShowUnassignedOnly=false;glShowIgnored=false;glShowDeleted=false;rebuildGLTable();}},
+          onclick:()=>{glShowAll=!glShowAll;glShowContra=false;glShowUnassignedOnly=false;glShowIgnored=false;glShowDeleted=false;glShowNew=false;Object.assign(_gfs,{all:glShowAll,contra:false,unassigned:false,ignored:false,deleted:false,newOnly:false});rebuildGLTable();}},
           'View all'),
       checkedCount
         ?el('button',{class:'btn accent sm',style:'margin-left:6px',
@@ -2423,15 +2428,22 @@ function viewPropertyBudgetTracker(code){
     h.append(..._hItems.filter(x=>x!=null));
     return h;
   };
-  const glHeaderEl=glHeader();
-  gp.append(glHeaderEl);
+  let _glHeaderEl=glHeader();
+  gp.append(_glHeaderEl);
   /* prominent auto-match action bar */
   /* autoBar removed — ⚡ Auto-match is in the GL section below */
   let _glTableEl=null;
   function rebuildGLTable(){
     if(_glTableEl)_glTableEl.remove();
+    // Fresh arrays so row filtering is never stale
+    const contraLines=allGls.filter(g=>Number(g.amount)<0&&!g.linkedProjectId&&!g.ignored);
+    const positiveGls=allGls.filter(g=>Number(g.amount)>=0&&!g.ignored);
+    const ignoredGls=allGls.filter(g=>g.ignored);
+    const deletedGls=S.gl.filter(g=>g.property===code&&g.deleted);
+    const newGls=allGls.filter(g=>g.isNew&&!g.ignored);
+    const unassigned=allGls.filter(g=>!g.linkedProjectId&&!g.account&&!g.category&&Number(g.amount)>0&&!g.ignored);
     /* rebuild header chip state */
-    const newH=glHeader(); glHeaderEl.replaceWith(newH);
+    const newH=glHeader(); _glHeaderEl.replaceWith(newH); _glHeaderEl=newH;
     if(glCollapsed){_glTableEl=el('div');gp.append(_glTableEl);return;}
     if(allGls.length){
     const hint=el('div',{id:'_glHint',style:'padding:6px 16px;font-size:11.5px;color:var(--ink-3);border-bottom:1px solid var(--line-2);background:var(--panel-2)'},'⠿  Drag rows onto a budget item or drop on a row in the SP Budget table');
@@ -2459,9 +2471,9 @@ function viewPropertyBudgetTracker(code){
       else{cb.checked=glChecked.has(gidStr);cb.onchange=()=>{if(cb.checked)glChecked.add(gidStr);else glChecked.delete(gidStr);/* refresh header */const oldH=gp.querySelector('.ph');if(oldH)oldH.replaceWith(glHeader());};}
       const glRow=el('tr',{
         draggable:'true',
-        style:'cursor:grab'+(linked?';opacity:.6':'')+(g.isNew?';border-left:3px solid var(--green)':''),
+        style:'cursor:grab'+((linked||(g.account||g.category))?';opacity:.6':'')+(g.isNew?';border-left:3px solid var(--green)':''),
         ondragstart:e=>{e.dataTransfer.setData('glId',gidStr);e.dataTransfer.effectAllowed='link';glRow.style.opacity='.35';_showRetBar();},
-        ondragend:()=>{glRow.style.opacity=linked?'.6':'1';_hideRetBar();}
+        ondragend:()=>{glRow.style.opacity=(linked||(g.account||g.category))?'.6':'1';_hideRetBar();}
       });
       glRow.append(
         el('td',{style:'padding:4px 8px;width:32px'},cb),
