@@ -2485,7 +2485,7 @@ function viewPropertyBudgetTracker(code){
                 el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 4px',title:'Restore',onclick:async()=>{g.ignored=false;await API.send('PATCH','/gl/'+g.id+'/ignore',{ignored:false});rebuildGLTable();}},'↩'),
                 el('button',{class:'btn ghost sm',style:'font-size:10px;padding:0 4px;color:var(--rust)',title:'Delete permanently',onclick:async e=>{e.stopPropagation();if(!confirm('Delete this GL line?'))return;await API.send('PATCH','/gl/'+g.id+'/delete',{deleted:true});g.deleted=true;rebuildGLTable();}},'✕'))
             :el('div',{style:'display:flex;gap:4px;align-items:center'},
-                (g.account||g.category)?el('span',{style:'font-size:11px;color:var(--green);font-style:italic'},'📂 '+(g.category||g.account)):el('span',{style:'font-size:11px;color:var(--amber);font-style:italic'},'unassigned'),
+                (g.account||g.category)?el('span',{style:'font-size:11px;color:var(--green)'},'📂 '+(g.category||g.account).slice(0,20)):el('span',{style:'font-size:11px;color:var(--amber);font-style:italic'},'unassigned'),
                 el('button',{class:'btn ghost sm',style:'font-size:10px;padding:1px 5px;color:var(--ink-3)',title:'Ignore — mark as reclassification, exclude from all calculations',
                   onclick:async e=>{e.stopPropagation();g.ignored=true;await API.send('PATCH','/gl/'+g.id+'/ignore',{ignored:true});rebuildGLTable();}},'Ignore'),
                 el('button',{class:'btn ghost sm',style:'font-size:10px;padding:1px 5px;color:var(--rust)',title:'Delete — permanently hidden, survives re-imports',
