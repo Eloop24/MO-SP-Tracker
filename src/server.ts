@@ -29,6 +29,13 @@ app.use('/api', requireAuth, api);
 app.use(express.static(publicDir));
 app.get('*', (_req, res) => res.sendFile(join(publicDir, 'index.html')));
 
+// Global error handler (4-arg signature required by Express)
+app.use((err: any, _req: any, res: any, _next: any) => {
+  console.error('[express-error]', err?.message || err);
+  if (res.headersSent) return;
+  res.status(err?.status || 500).json({ error: err?.message || 'Internal server error' });
+});
+
 // Run DB migrations + first-boot seed in-process, then always start listening.
 // Retry a few times in case the database isn't accepting connections yet on a
 // fresh deploy. If it never succeeds we still bind the port (so the health check
