@@ -11,7 +11,7 @@ import { applyCostRules, uid, STEP_KEYS, CONTRACT_STEPS, type Project, type AppS
 
 export const api = Router();
 
-const memUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+const memUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
 // Files are stored in Postgres (so they persist across redeploys with no volume).
 async function storeFile(name: string, mime: string, buffer: Buffer): Promise<string> {
