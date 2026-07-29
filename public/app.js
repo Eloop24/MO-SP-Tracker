@@ -1603,7 +1603,7 @@ function budgetTracker(code, glRows){
 ========================================================= */
 function viewProperty(){
   const code=VIEW.prop||S.properties[0].code;
-  if(code==='WVMO'||code==='SPMO'||code==='HRMO') return viewPropertyBudgetTracker(code);
+  return viewPropertyBudgetTracker(code);
   const p=PROP(code); const c=S.cash[code]||{};
   const budget=Number(p.spBudget)||0;
   const glSpent=glSpentFor(code);
