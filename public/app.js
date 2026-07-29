@@ -52,6 +52,26 @@ const esc = s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;
 const today=()=>new Date().toISOString().slice(0,10);
 const fmtDate=(d)=>{ if(!d)return '—'; const m=String(d).slice(0,10).split('-'); if(m.length!==3)return String(d); const dt=new Date(+m[0],+m[1]-1,+m[2]); if(isNaN(dt))return String(d); return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); };
 const contractDate=p=>{const m=(p.contractFileName||'').match(/\b(\d{4})(\d{2})(\d{2})\b/);return m?m[1]+'-'+m[2]+'-'+m[3]:null;};
+function paymentTermsStr(ps,totalRaw){
+  const totalNum=parseFloat(String(totalRaw||0).replace(/[^0-9.]/g,''))||0;
+  const usd=n=>'$'+Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  if(!ps||ps.type==='full')return 'Entirety Due on Completion';
+  const depPct=Number(ps.depositPct)||0;
+  const depAmt=totalNum*depPct/100;
+  if(ps.type==='deposit'){
+    const rem=totalNum-depAmt;
+    return depPct+'% Deposit ('+usd(depAmt)+') due upfront with remainder ('+usd(rem)+') due on completion';
+  }
+  // progress
+  const pPcts=(ps.progressPcts||[]).map(Number);
+  const pAmts=pPcts.map(p=>totalNum*p/100);
+  const remPct=Math.max(0,100-depPct-pPcts.reduce((a,b)=>a+b,0));
+  const remAmt=totalNum-depAmt-pAmts.reduce((a,b)=>a+b,0);
+  const parts=[depPct+'% Deposit ('+usd(depAmt)+')'];
+  pPcts.forEach((p,i)=>parts.push(p+'% Progress Payment #'+(i+1)+' ('+usd(pAmts[i])+')'));
+  parts.push(remPct+'% due on completion ('+usd(remAmt)+')');
+  return parts.join('; ');
+}
 const inDateRange=(p,state)=>{ const d=(p.dateAdded||'').slice(0,10); if(state.dateFrom&&(!d||d<state.dateFrom))return false; if(state.dateTo&&(!d||d>state.dateTo))return false; return true; };
 const uid = p=>p+Math.random().toString(36).slice(2,8);
 
@@ -1139,6 +1159,64 @@ function openProject(id,preset){
   }
   function refreshMeta(){ const filled=p.bids.filter(bd=>bd.contractor||bd.amount!=null||bd.file||bd.fileKey).length; bidMeta.textContent=`${filled}/3 filled${p.bids.some(b=>b.approved)?' · winner selected':''}`; }
 
+  // --- Payment Structure ---
+  if(!p.paymentStructure)p.paymentStructure={type:'full',depositPct:30,progressPcts:[25]};
+  const psWrap=el('div',{style:'margin-top:14px;padding:12px 14px;background:var(--line-2);border-radius:8px;border:1px solid var(--line)'});
+  bidBody.append(psWrap);
+  function renderPS(){
+    psWrap.innerHTML='';
+    const ps=p.paymentStructure;
+    psWrap.append(el('div',{style:'font-family:var(--disp);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);margin-bottom:9px'},'Payment Structure'));
+    const chipRow=el('div',{style:'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px'});
+    [{key:'full',label:'Full on Completion'},{key:'deposit',label:'Deposit + Balance'},{key:'progress',label:'Deposit + Progress Payments'}].forEach(t=>{
+      const on=ps.type===t.key;
+      chipRow.append(el('button',{class:'chip',style:'cursor:pointer;font-size:11px;'+(on?'background:var(--blue);color:#fff;border-color:var(--blue)':''),
+        onclick:()=>{ps.type=t.key;renderPS();}},t.label));
+    });
+    psWrap.append(chipRow);
+    if(ps.type!=='full'){
+      const dr=el('div',{style:'display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px'});
+      const dw=el('div',{class:'field',style:'margin:0;flex:0 0 auto'});
+      dw.append(el('label',{style:'font-size:11px'},'Initial Deposit %'));
+      dw.append(el('input',{type:'number',min:'1',max:'99',value:ps.depositPct||30,style:'width:70px',
+        oninput:e=>{ps.depositPct=Math.min(99,Math.max(1,+e.target.value||1));renderPS();}}));
+      dr.append(dw);
+      if(ps.type==='progress'){
+        const pw=el('div',{class:'field',style:'margin:0;flex:0 0 auto'});
+        pw.append(el('label',{style:'font-size:11px'},'# of Progress Payments'));
+        pw.append(el('input',{type:'number',min:'1',max:'6',value:(ps.progressPcts||[]).length||1,style:'width:60px',
+          oninput:e=>{
+            const n=Math.min(6,Math.max(1,+e.target.value||1));
+            const cur=[...(ps.progressPcts||[25])];
+            while(cur.length<n)cur.push(cur[cur.length-1]||25);
+            ps.progressPcts=cur.slice(0,n);
+            renderPS();
+          }}));
+        dr.append(pw);
+        psWrap.append(dr);
+        const pgGrid=el('div',{style:'display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px'});
+        (ps.progressPcts||[]).forEach((pct,i)=>{
+          const pw2=el('div',{class:'field',style:'margin:0;flex:0 0 auto'});
+          pw2.append(el('label',{style:'font-size:11px'},'Progress #'+(i+1)+' %'));
+          pw2.append(el('input',{type:'number',min:'1',max:'99',value:pct,style:'width:60px',
+            oninput:e=>{ps.progressPcts[i]=Math.min(99,Math.max(1,+e.target.value||1));renderPS();}}));
+          pgGrid.append(pw2);
+        });
+        psWrap.append(pgGrid);
+      } else {
+        psWrap.append(dr);
+      }
+    }
+    const totalNum=p.actualCost!=null?p.actualCost:(p.bids.find(b=>b.approved&&b.amount!=null)?.amount??p.anticipatedCost??0);
+    const preview=paymentTermsStr(ps,totalNum);
+    const remPct=ps.type==='full'?100:ps.type==='deposit'?100-(ps.depositPct||0):Math.max(0,100-(ps.depositPct||0)-((ps.progressPcts||[]).reduce((a,b)=>a+b,0)));
+    const remWarn=remPct<0?el('span',{style:'color:var(--rust);font-size:11px'},' ⚠ percentages exceed 100%'):'';
+    psWrap.append(el('div',{style:'padding:9px 11px;background:var(--panel);border-radius:6px;font-size:11.5px;color:var(--ink-2);line-height:1.5'},
+      el('span',{style:'font-family:var(--disp);font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);display:block;margin-bottom:3px'},'Payment Terms Preview'),
+      preview,remWarn));
+  }
+  renderPS();
+
   // --- Generate Contract (Independent Contractor Agreement) ---
   const genRow=el('div',{style:'margin-top:12px;padding-top:12px;border-top:1px solid var(--line-2);display:flex;align-items:center;gap:10px;flex-wrap:wrap'});
   bidBody.append(genRow);
@@ -1160,6 +1238,7 @@ function openProject(id,preset){
     const plusDays=n=>{const d=new Date();d.setDate(d.getDate()+n);return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${d.getFullYear()}`;};
     const data={
       effectiveDate:isoToMdy(today()), termEndDate:plusDays(60),
+      paymentTerms:'',
       ownerEntity:prop.ownerEntity||'', contractorName:(approved.contractor||p.contractor||''),
       propertyName:prop.name||'', propertyAddr:prop.address||'',
       ownerNoticeAddr:prop.ownerNoticeAddr||prop.address||'', contractorAddr:'',
@@ -1184,6 +1263,15 @@ function openProject(id,preset){
     sect('Contract');
     bb.append(el('div',{class:'frow'}, f('Effective date (MM/DD/YYYY)','effectiveDate'), f('Term end date (MM/DD/YYYY)','termEndDate')));
     bb.append(el('div',{class:'frow'}, f('Contract total','contractTotal'), f('Unit # (optional)','unit',{ph:'e.g. 201'})));
+    // Compute paymentTerms from project's paymentStructure
+    const _ps=p.paymentStructure||{type:'full'};
+    const _total=p.actualCost!=null?p.actualCost:(p.bids.find(b=>b.approved&&b.amount!=null)?.amount??p.anticipatedCost??0);
+    data.paymentTerms=paymentTermsStr(_ps,total||_total);
+    const ptRow=el('div',{class:'field'});
+    ptRow.append(el('label',{},'Payment Terms'));
+    const ptSpan=el('div',{style:'padding:7px 10px;background:var(--line-2);border-radius:6px;font-size:12px;color:var(--ink-2);border:1px solid var(--line);line-height:1.5'},data.paymentTerms||'Entirety Due on Completion');
+    ptRow.append(ptSpan,el('span',{style:'font-size:10.5px;color:var(--ink-3);margin-top:3px;display:block'},'Edit the payment structure in the Bids panel to change.'));
+    bb.append(ptRow);
     bb.append(f('Scope of work','scope',{ph:'e.g. HVAC replacement — Unit 316'}));
     bb.append(el('div',{class:'frow'}, f('Daily reduction amount','dailyReduction',{ph:'e.g. $500'}), f('Work days','workDays',{ph:'e.g. Mon - Fri'})));
     bb.append(f('Work hours','workHours',{ph:'e.g. 8:00 AM - 5:00 PM'}));

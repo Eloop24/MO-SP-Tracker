@@ -22,6 +22,7 @@ export interface ContractVars {
   dailyReduction?: string;  // e.g. "$500"
   workDays?: string;        // e.g. "Mon - Fri"
   workHours?: string;       // e.g. "8:00 AM - 5:00 PM"
+  paymentTerms?: string;    // e.g. "30% Deposit ($9,210.00) due upfront with remainder due on completion"
 }
 export interface BidAttachment { buffer: Buffer; name: string; }
 
@@ -208,7 +209,11 @@ async function exhibitAB(doc: PDFDocument, vars: ContractVars, attachments: BidA
   let yy = TOP;
   center('EXHIBIT A & B', yy, 13, bold); yy -= 20;
   center('CONTRACT PRICE & SCOPE', yy, 11, bold); yy -= 18;
-  center(`CONTRACT TOTAL: ${vars.contractTotal}`, yy, 12, bold); yy -= 28;
+  center(`CONTRACT TOTAL: ${vars.contractTotal}`, yy, 12, bold); yy -= 20;
+
+  // Payment terms line
+  const ptLabel = vars.paymentTerms && vars.paymentTerms.trim() ? vars.paymentTerms.trim() : 'Entirety Due on Completion';
+  center(`Payment Terms: ${ptLabel}`, yy, 10, roman); yy -= 24;
 
   const atts = expandAttachments(attachments);
   if (!atts.length) { center('[ Bid document attached separately ]', yy, 10, roman); return; }

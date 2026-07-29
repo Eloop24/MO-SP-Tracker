@@ -82,6 +82,7 @@ export function rowToProject(r: any, bids: Bid[] = [], notes: ProgressNote[] = [
     depositAmount: r.deposit_amount != null ? Number(r.deposit_amount) : null,
     depositPaid: !!r.deposit_paid,
     depositGlLineId: r.deposit_gl_line_id ?? null,
+    paymentStructure: r.payment_structure ?? null,
     contractFileKey: r.contract_file_key ?? null,
     contractFileName: r.contract_file_name ?? null,
     lienFileKey: r.lien_file_key ?? null,

@@ -90,9 +90,10 @@ api.post('/projects', async (req, res) => {
   await tx((c) => writeProject(c, p, true));
   // WVMO extended fields — separate query outside tx so a missing column never breaks the save
   try { await query(
-    `update projects set linked_budget_item_id=$1,is_budget_item=$2,deposit_amount=$3,deposit_paid=$4,deposit_gl_line_id=$5 where id=$6`,
+    `update projects set linked_budget_item_id=$1,is_budget_item=$2,deposit_amount=$3,deposit_paid=$4,deposit_gl_line_id=$5,payment_structure=$6 where id=$7`,
     [(p as any).linkedBudgetItemId||null,!!(p as any).isBudgetItem,
-     (p as any).depositAmount??null,!!(p as any).depositPaid,(p as any).depositGlLineId||null,p.id]); } catch(_){}
+     (p as any).depositAmount??null,!!(p as any).depositPaid,(p as any).depositGlLineId||null,
+     (p as any).paymentStructure ? JSON.stringify((p as any).paymentStructure) : null,p.id]); } catch(_){}
   const r = await query('select * from projects where id=$1', [p.id]);
   res.json(rowToProject(r.rows[0], p.bids || [], p.progressNotes || []));
 });
@@ -105,9 +106,10 @@ api.patch('/projects/:id', async (req, res) => {
   await tx((c) => writeProject(c, p, false));
   // WVMO extended fields — separate query outside tx so a missing column never breaks the save
   try { await query(
-    `update projects set linked_budget_item_id=$1,is_budget_item=$2,deposit_amount=$3,deposit_paid=$4,deposit_gl_line_id=$5 where id=$6`,
+    `update projects set linked_budget_item_id=$1,is_budget_item=$2,deposit_amount=$3,deposit_paid=$4,deposit_gl_line_id=$5,payment_structure=$6 where id=$7`,
     [(p as any).linkedBudgetItemId||null,!!(p as any).isBudgetItem,
-     (p as any).depositAmount??null,!!(p as any).depositPaid,(p as any).depositGlLineId||null,p.id]); } catch(_){}
+     (p as any).depositAmount??null,!!(p as any).depositPaid,(p as any).depositGlLineId||null,
+     (p as any).paymentStructure ? JSON.stringify((p as any).paymentStructure) : null,p.id]); } catch(_){}
   const r = await query('select * from projects where id=$1', [p.id]);
   res.json(rowToProject(r.rows[0], p.bids || [], p.progressNotes || []));
 });
@@ -181,6 +183,7 @@ api.post('/projects/:id/contract', async (req, res) => {
     contractorName: b.contractorName || '', propertyName: b.propertyName || '', propertyAddr: b.propertyAddr || '',
     ownerNoticeAddr: b.ownerNoticeAddr || b.propertyAddr || '', contractorAddr: b.contractorAddr || '', contractTotal: b.contractTotal || '',
     dailyReduction: b.dailyReduction || '', workDays: b.workDays || '', workHours: b.workHours || '',
+    paymentTerms: b.paymentTerms || '',
   };
   if (!vars.ownerEntity || !vars.contractorName || !vars.contractTotal) return res.status(400).json({ error: 'ownerEntity, contractorName and contractTotal are required' });
 
