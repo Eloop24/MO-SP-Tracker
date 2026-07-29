@@ -1178,7 +1178,7 @@ function openProject(id,preset){
       const dr=el('div',{style:'display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px'});
       const dw=el('div',{class:'field',style:'margin:0;flex:0 0 auto'});
       dw.append(el('label',{style:'font-size:11px'},'Initial Deposit %'));
-      dw.append(el('input',{type:'number',min:'1',max:'99',value:ps.depositPct||30,style:'width:70px',
+      dw.append(el('input',{type:'number',min:'0.01',max:'99.99',step:'0.01',value:ps.depositPct||30,style:'width:80px',
         oninput:e=>{ps.depositPct=Math.min(99,Math.max(1,+e.target.value||1));renderPS();}}));
       dr.append(dw);
       if(ps.type==='progress'){
@@ -1198,7 +1198,7 @@ function openProject(id,preset){
         (ps.progressPcts||[]).forEach((pct,i)=>{
           const pw2=el('div',{class:'field',style:'margin:0;flex:0 0 auto'});
           pw2.append(el('label',{style:'font-size:11px'},'Progress #'+(i+1)+' %'));
-          pw2.append(el('input',{type:'number',min:'1',max:'99',value:pct,style:'width:60px',
+          pw2.append(el('input',{type:'number',min:'0.01',max:'99.99',step:'0.01',value:pct,style:'width:70px',
             oninput:e=>{ps.progressPcts[i]=Math.min(99,Math.max(1,+e.target.value||1));renderPS();}}));
           pgGrid.append(pw2);
         });
