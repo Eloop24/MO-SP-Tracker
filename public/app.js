@@ -51,6 +51,7 @@ const pct = (n)=>n==null||isNaN(n)?'—':(Number(n)*100).toFixed(n<0.1?1:0)+'%';
 const esc = s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const today=()=>new Date().toISOString().slice(0,10);
 const fmtDate=(d)=>{ if(!d)return '—'; const m=String(d).slice(0,10).split('-'); if(m.length!==3)return String(d); const dt=new Date(+m[0],+m[1]-1,+m[2]); if(isNaN(dt))return String(d); return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); };
+const contractDate=p=>{const m=(p.contractFileName||'').match(/\b(\d{4})(\d{2})(\d{2})\b/);return m?m[1]+'-'+m[2]+'-'+m[3]:null;};
 const inDateRange=(p,state)=>{ const d=(p.dateAdded||'').slice(0,10); if(state.dateFrom&&(!d||d<state.dateFrom))return false; if(state.dateTo&&(!d||d>state.dateTo))return false; return true; };
 const uid = p=>p+Math.random().toString(36).slice(2,8);
 
@@ -901,8 +902,10 @@ function projectCard(p){
     c.append(trackEl(p));
     const cost=p.actualCost!=null?p.actualCost:p.anticipatedCost;
     const lab=p.actualCost!=null?'actual':'planned';
+    const _cd=contractDate(p);
+    const _depChip=p.depositAmount>0?el('span',{class:'chip',style:'font-size:9px;padding:1px 5px;margin-left:6px;background:'+(p.depositPaid?'rgba(46,160,67,.15)':'rgba(180,120,0,.15)')+';color:'+(p.depositPaid?'var(--green)':'var(--amber)')},p.depositPaid?'Dep. Paid':'Dep. Req\u2019d'):null;
     c.append(el('div',{class:'ft'},
-      el('span',{}, `${stepsDone(p)}/${stepsTotal(p)} · `, el('span',{},isComplete(p)?'done':(phase(p)==='note'?'note':(stage(p)>=0?LIFECYCLE[stage(p)].label:'planned')))),
+      el('span',{style:'display:flex;align-items:center;gap:0'}, _cd?fmtDate(_cd)+' · ':`${stepsDone(p)}/${stepsTotal(p)} · `, el('span',{},isComplete(p)?'done':(phase(p)==='note'?'note':(stage(p)>=0?LIFECYCLE[stage(p)].label:'planned'))), _depChip||''),
       el('span',{class:'cost'}, cost!=null? fmt(cost):'—', cost!=null?el('span',{style:'font-weight:400;color:var(--ink-3);font-size:10px'},' '+lab):'')));
   }
   return c;
