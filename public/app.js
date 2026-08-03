@@ -384,6 +384,7 @@ function rail(){
   nav.append(el('div',{class:'grp'},'Money'));
   nav.append(item('cash','$','Cash & Loans'));
   nav.append(item('data','⇪','Upload & Data'));
+  nav.append(item('tools','🔧','Tools'));
 
   const foot=el('div',{class:'foot'},
     el('div',{class:'row'}, el('span',{},'GL period'), el('span',{class:'mono'},S.meta&&S.meta.glPeriod?S.meta.glPeriod:'—')),
@@ -394,7 +395,7 @@ function rail(){
 
 function mainCol(){
   const m=el('div',{class:'main'});
-  const views={dashboard:viewDashboard,projects:viewProjects,inhouse:viewInHouse,contracts:viewContracts,property:viewProperty,cash:viewCash,data:viewData};
+  const views={dashboard:viewDashboard,projects:viewProjects,inhouse:viewInHouse,contracts:viewContracts,property:viewProperty,cash:viewCash,data:viewData,tools:viewTools};
   const {bar,body}=(views[VIEW.tab]||viewDashboard)();
   m.append(bar,el('div',{class:'content'},body));
   return m;
@@ -2873,6 +2874,128 @@ function openAdjust(){
 /* =========================================================
    DATA / UPLOAD
 ========================================================= */
+function viewTools(){
+  const bar=topbar('Tools','Utilities');
+  const body=el('div',{class:'pad',style:'max-width:760px'});
+
+  function sect(title,hint){
+    const w=el('div',{class:'panel',style:'margin-bottom:20px'});
+    w.append(el('div',{class:'ph'},el('h3',{},title)));
+    const b=el('div',{class:'pad'});
+    b.append(el('p',{class:'bs-hint',style:'margin-top:0'},hint));
+    w.append(b); return{w,b};
+  }
+
+  /* ── PDF Merger ── */
+  const pm=sect('PDF Merger','Drop multiple PDFs (or pick files). Drag rows to reorder, then click Merge & Download. Runs entirely in your browser — nothing is uploaded.');
+  const pmFiles=[];
+  const pmList=el('div',{style:'display:flex;flex-direction:column;gap:5px;margin-bottom:10px'});
+  const pmBtn=el('button',{class:'btn accent sm',style:'display:none',onclick:mergePdfs},'⬇ Merge & Download');
+  const pmStatus=el('span',{style:'font-size:12px;color:var(--ink-3);margin-left:8px'});
+
+  function pmRender(){
+    pmList.innerHTML='';
+    pmFiles.forEach((f,i)=>{
+      const row=el('div',{style:'display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--line-2);border-radius:6px;font-size:12.5px;cursor:grab',
+        draggable:true,
+        ondragstart:e=>{e.dataTransfer.setData('text/plain',String(i));e.currentTarget.style.opacity='.4';},
+        ondragend:e=>{e.currentTarget.style.opacity='1';},
+        ondragover:e=>{e.preventDefault();e.currentTarget.style.outline='2px dashed var(--accent)';},
+        ondragleave:e=>{e.currentTarget.style.outline='';},
+        ondrop:e=>{e.preventDefault();e.currentTarget.style.outline='';const from=+e.dataTransfer.getData('text/plain');if(from===i)return;const moved=pmFiles.splice(from,1)[0];pmFiles.splice(i,0,moved);pmRender();}
+      });
+      row.append(
+        el('span',{style:'font-size:14px'},'📄'),
+        el('span',{style:'flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'},f.name),
+        el('span',{style:'font-size:11px;color:var(--ink-3);white-space:nowrap'},fileSize2(f.size)),
+        el('button',{class:'btn ghost sm',style:'padding:2px 6px',onclick:()=>{pmFiles.splice(i,1);pmRender();}},'✕')
+      );
+      pmList.append(row);
+    });
+    pmBtn.style.display=pmFiles.length>1?'':'none';
+    pmStatus.textContent=pmFiles.length?pmFiles.length+' file'+(pmFiles.length===1?'':'s')+' queued':'';
+  }
+
+  const pmDrop=el('div',{style:'border:2px dashed var(--line-2);border-radius:8px;padding:18px 16px;text-align:center;cursor:pointer;color:var(--ink-3);font-size:13px;transition:border-color .15s',
+    ondragover:e=>{e.preventDefault();pmDrop.style.borderColor='var(--accent)';},
+    ondragleave:()=>{pmDrop.style.borderColor='var(--line-2)';},
+    ondrop:e=>{e.preventDefault();pmDrop.style.borderColor='var(--line-2)';addPmFiles([...e.dataTransfer.files]);},
+    onclick:()=>pmInput.click()
+  },'📄 Drop PDFs here, or click to browse');
+  const pmInput=el('input',{type:'file',accept:'application/pdf',multiple:true,style:'display:none',onchange:e=>{addPmFiles([...e.target.files]);e.target.value='';}});
+  function addPmFiles(files){files.filter(f=>f.type==='application/pdf'||f.name.endsWith('.pdf')).forEach(f=>pmFiles.push(f));pmRender();}
+
+  async function mergePdfs(){
+    pmBtn.disabled=true; pmBtn.textContent='Merging…';
+    try{
+      if(!window._pdfLib){
+        pmStatus.textContent='Loading pdf-lib…';
+        await new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';s.onload=res;s.onerror=rej;document.head.append(s);});
+        window._pdfLib=window.PDFLib;
+      }
+      const {PDFDocument}=window._pdfLib;
+      const merged=await PDFDocument.create();
+      for(const f of pmFiles){
+        const buf=await f.arrayBuffer();
+        try{
+          const doc=await PDFDocument.load(buf,{ignoreEncryption:true});
+          const pages=await merged.copyPages(doc,doc.getPageIndices());
+          pages.forEach(p=>merged.addPage(p));
+        }catch(e){pmStatus.textContent='⚠ Skipped '+f.name+' (unreadable)';await new Promise(r=>setTimeout(r,1500));}
+      }
+      const bytes=await merged.save();
+      const blob=new Blob([bytes],{type:'application/pdf'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a'); a.href=url; a.download='merged.pdf'; document.body.append(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),5000);
+      pmStatus.textContent='✓ Done — '+merged.getPageCount()+' pages';
+    }catch(e){pmStatus.textContent='Error: '+e.message;}
+    pmBtn.disabled=false; pmBtn.textContent='⬇ Merge & Download';
+  }
+
+  pm.b.append(pmList,pmDrop,pmInput,el('div',{style:'margin-top:10px;display:flex;align-items:center;gap:8px'},pmBtn,pmStatus));
+  body.append(pm.w);
+
+  /* ── Word → PDF ── */
+  const wp=sect('Word → PDF','Drop a .docx file. Converted to HTML in your browser via mammoth.js, then opens a print dialog — choose "Save as PDF". Best for simple documents; complex layouts may shift slightly.');
+  const wpDrop=el('div',{style:'border:2px dashed var(--line-2);border-radius:8px;padding:18px 16px;text-align:center;cursor:pointer;color:var(--ink-3);font-size:13px;transition:border-color .15s',
+    ondragover:e=>{e.preventDefault();wpDrop.style.borderColor='var(--accent)';},
+    ondragleave:()=>{wpDrop.style.borderColor='var(--line-2)';},
+    ondrop:e=>{e.preventDefault();wpDrop.style.borderColor='var(--line-2)';const f=e.dataTransfer.files[0];if(f)convertWord(f);},
+    onclick:()=>wpInput.click()
+  },'📝 Drop a .docx file here, or click to browse');
+  const wpInput=el('input',{type:'file',accept:'.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document',style:'display:none',onchange:e=>{if(e.target.files[0])convertWord(e.target.files[0]);e.target.value='';}});
+  const wpStatus=el('div',{style:'font-size:12px;color:var(--ink-3);margin-top:8px;min-height:18px'});
+
+  async function convertWord(file){
+    wpDrop.textContent='Converting…'; wpDrop.style.opacity='.6'; wpStatus.textContent='';
+    try{
+      if(!window._mammoth){
+        wpStatus.textContent='Loading mammoth.js…';
+        await new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js';s.onload=res;s.onerror=rej;document.head.append(s);});
+        window._mammoth=window.mammoth;
+      }
+      const buf=await file.arrayBuffer();
+      const result=await window._mammoth.convertToHtml({arrayBuffer:buf});
+      const html=result.value;
+      const pw=window.open('','_blank');
+      pw.document.write('<html><head><title>'+file.name+'</title><style>body{font-family:Arial,sans-serif;font-size:12pt;margin:1in;line-height:1.4}@media print{body{margin:.5in}}</style></head><body>'+html+'</body></html>');
+      pw.document.close();
+      pw.focus();
+      setTimeout(()=>pw.print(),400);
+      wpStatus.textContent='✓ Print dialog opened — choose "Save as PDF".'+(result.messages.length?' ('+result.messages.length+' formatting note'+(result.messages.length===1?'':'s')+')':'');
+    }catch(e){wpStatus.textContent='Error: '+e.message;}
+    wpDrop.textContent='📝 Drop a .docx file here, or click to browse'; wpDrop.style.opacity='1';
+  }
+
+  wp.b.append(wpDrop,wpInput,wpStatus);
+  body.append(wp.w);
+
+  return{bar,body};
+}
+
+const fileSize2=n=>n==null?'':n<1024?n+' B':n<1048576?(n/1024).toFixed(0)+' KB':(n/1048576).toFixed(1)+' MB';
+
 function viewData(){
   const bar=topbar('Data','Upload & Data');
   const body=el('div',{class:'grid',style:'grid-template-columns:1fr 1fr'});
