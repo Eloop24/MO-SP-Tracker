@@ -236,6 +236,36 @@ api.post('/projects/:id/contract', async (req, res) => {
   res.json({ contractFileKey: fileKey, contractFileName: fileName, downloadUrl: `/api/files/${fileKey}?name=${encodeURIComponent(fileName)}` });
 });
 
+/* ---------- Misc job documents ---------- */
+api.post('/projects/:id/docs/upload', memUpload.single('file'), async (req, res) => {
+  try {
+    const projRow = await query('select misc_docs from projects where id=$1', [req.params.id]);
+    if (!projRow.rowCount) return res.status(404).json({ error: 'not found' });
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: 'no file' });
+    const fileKey = await storeFile(file.originalname, file.mimetype, file.buffer);
+    const doc = { id: uid('D'), fileKey, fileName: file.originalname, fileSize: file.size, label: (req.body.label || '').slice(0,120), uploadedAt: new Date().toISOString() };
+    const existing: any[] = projRow.rows[0].misc_docs || [];
+    existing.push(doc);
+    await query('update projects set misc_docs=$1, updated_at=now() where id=$2', [JSON.stringify(existing), req.params.id]);
+    res.json(doc);
+  } catch (err: any) {
+    if (!res.headersSent) res.status(500).json({ error: err?.message || 'Upload failed' });
+  }
+});
+
+api.delete('/projects/:id/docs/:docId', async (req, res) => {
+  try {
+    const projRow = await query('select misc_docs from projects where id=$1', [req.params.id]);
+    if (!projRow.rowCount) return res.status(404).json({ error: 'not found' });
+    const docs = (projRow.rows[0].misc_docs || []).filter((d: any) => d.id !== req.params.docId);
+    await query('update projects set misc_docs=$1, updated_at=now() where id=$2', [JSON.stringify(docs), req.params.id]);
+    res.json({ ok: true });
+  } catch (err: any) {
+    if (!res.headersSent) res.status(500).json({ error: err?.message || 'Delete failed' });
+  }
+});
+
 /* ---------- Delete a contract record ---------- */
 api.delete('/contracts/:id', async (req, res) => {
   const cRow = (await query('select * from contracts where id=$1', [req.params.id])).rows[0];

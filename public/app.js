@@ -980,6 +980,7 @@ function openProject(id,preset){
   p.steps=p.steps||{}; p.bids=p.bids||[]; p.progressNotes=p.progressNotes||[];
   while(p.bids.length<3) p.bids.push({id:uid('b'),contractor:'',amount:null,approved:false,file:null});
   const fileSize=n=>n==null?'':n<1024?n+' B':n<1048576?(n/1024).toFixed(0)+' KB':(n/1048576).toFixed(1)+' MB';
+  const fileIcon=n=>{const e=(n||'').split('.').pop().toLowerCase();return e==='pdf'?'📄':e==='zip'||e==='7z'?'📦':['jpg','jpeg','png','gif','webp'].includes(e)?'🖼️':'doc docx'.includes(e)?'📝':'xls xlsx csv'.includes(e)?'📊':'📎';};
   const reg=()=>PROP(p.property)?PROP(p.property).region:'';
 
   const scrim=el('div',{class:'scrim',onclick:e=>{if(e.target===scrim)close();}});
@@ -1443,6 +1444,67 @@ function openProject(id,preset){
     if(p.lienFileKey) showLwFile(p.lienFileKey,p.lienFileName);
     lwBody.append(lwDropzone,lwInput,lwResult);
     lwWrap.append(lwSum,lwBody); b.append(lwWrap);
+  }
+
+  // --- job documents (change orders, invoices, misc) ---
+  {
+    const jdDocs=Array.isArray(p.miscDocs)?[...p.miscDocs]:[];
+    const jdWrap=el('details',{class:'panel acc',style:'margin-top:16px',...(jdDocs.length?{open:''}:{})});
+    const jdMeta=el('span',{class:'bs-meta'});
+    const jdSum=el('summary',{class:'ph as-summary'},el('span',{class:'chev'},'▸'),el('h3',{},'Job Documents'),el('div',{class:'sp'}),jdMeta);
+    const jdBody=el('div',{class:'pad'});
+    jdBody.append(el('p',{class:'bs-hint',style:'margin-top:0'},'Attach change orders, invoices, photos, or any other files relevant to this job.'));
+    const jdList=el('div',{style:'display:flex;flex-direction:column;gap:6px;margin-bottom:10px'});
+    function renderJdList(){
+      jdList.innerHTML='';
+      jdDocs.forEach(doc=>{
+        const row=el('div',{style:'display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--line-2);border-radius:7px;font-size:12.5px'});
+        row.append(
+          el('span',{style:'font-size:15px'},fileIcon(doc.fileName||'')),
+          el('div',{style:'flex:1;min-width:0'},
+            el('a',{href:'/api/files/'+doc.fileKey+'?name='+encodeURIComponent(doc.fileName||'file'),target:'_blank',
+              style:'color:var(--ink-1);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:280px'},
+              doc.label||doc.fileName||'file'),
+            doc.label&&doc.label!==doc.fileName?el('div',{style:'font-size:10.5px;color:var(--ink-3)'},doc.fileName):''),
+          doc.fileSize?el('span',{style:'font-size:11px;color:var(--ink-3);white-space:nowrap'},fileSize(doc.fileSize)):'',
+          el('button',{class:'btn ghost sm',style:'color:var(--rust);flex-shrink:0',title:'Remove',onclick:async()=>{
+            if(!confirm('Remove '+( doc.label||doc.fileName)+'?'))return;
+            try{
+              await fetch('/api/projects/'+p.id+'/docs/'+doc.id,{method:'DELETE'});
+              const idx=jdDocs.findIndex(d=>d.id===doc.id); if(idx>-1)jdDocs.splice(idx,1);
+              p.miscDocs=jdDocs; renderJdList(); updateJdMeta(); toast('Removed');
+            }catch(e){toast('Remove failed: '+e.message);}
+          }},'✕')
+        );
+        jdList.append(row);
+      });
+    }
+    function updateJdMeta(){ jdMeta.textContent=jdDocs.length?jdDocs.length+' file'+(jdDocs.length===1?'':'s'):'No files yet'; }
+    const jdDropzone=el('div',{style:'border:2px dashed var(--line-2);border-radius:8px;padding:20px 16px;text-align:center;cursor:pointer;color:var(--ink-3);font-size:13px;transition:border-color .15s',
+      ondragover:e=>{e.preventDefault();jdDropzone.style.borderColor='var(--accent)';},
+      ondragleave:()=>{jdDropzone.style.borderColor='var(--line-2)';},
+      ondrop:async e=>{e.preventDefault();jdDropzone.style.borderColor='var(--line-2)';const files=[...e.dataTransfer.files];if(files.length)await uploadJdFiles(files);},
+      onclick:()=>jdInput.click()
+    },'📎 Drop files here, or click to browse');
+    const jdInput=el('input',{type:'file',multiple:true,style:'display:none',onchange:async e=>{if(e.target.files.length)await uploadJdFiles([...e.target.files]);}});
+    async function uploadJdFiles(files){
+      for(const file of files){
+        const labelVal=files.length===1?prompt('Label for "'+file.name+'" (optional):','')||'':'';
+        jdDropzone.textContent='Uploading '+file.name+'…'; jdDropzone.style.opacity='.6';
+        try{
+          const fd=new FormData(); fd.append('file',file); if(labelVal)fd.append('label',labelVal);
+          const r=await fetch('/api/projects/'+p.id+'/docs/upload',{method:'POST',body:fd});
+          if(!r.ok){const e=await r.json().catch(()=>({error:r.status}));toast('Upload failed: '+(e.error||r.status));continue;}
+          const doc=await r.json();
+          jdDocs.push(doc); p.miscDocs=jdDocs;
+          renderJdList(); updateJdMeta(); jdWrap.open=true; toast('Uploaded ✓');
+        }catch(e){toast('Upload failed: '+e.message);}
+        finally{jdDropzone.textContent='📎 Drop files here, or click to browse'; jdDropzone.style.opacity='1';}
+      }
+    }
+    renderJdList(); updateJdMeta();
+    jdBody.append(jdList,jdDropzone,jdInput);
+    jdWrap.append(jdSum,jdBody); b.append(jdWrap);
   }
 
   // --- lifecycle steps ---
