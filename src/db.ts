@@ -104,7 +104,7 @@ export function rowToCash(r: any): CashSnapshot {
 
 /* ---------- Assemble the full state blob (GET /api/state) ---------- */
 export async function assembleState(): Promise<AppState> {
-  const [props, projs, bids, notes, cash, adj, gl, meta, contracts] = await Promise.all([
+  const [props, projs, bids, notes, cash, adj, gl, meta, contracts, pipeline] = await Promise.all([
     query('select * from properties order by code'),
     query('select * from projects order by id'),
     query('select * from bids order by project_id, slot'),
@@ -114,6 +114,7 @@ export async function assembleState(): Promise<AppState> {
     query('select * from gl_lines order by id'),
     query('select * from app_meta where id=1'),
     query('select * from contracts order by effective_date, created_at'),
+    query('select * from pipeline_items order by created_at desc'),
   ]);
 
   const bidsByProject = new Map<string, Bid[]>();
@@ -143,5 +144,12 @@ export async function assembleState(): Promise<AppState> {
   const m = meta.rows[0] || {};
   const metaObj = { version: m.version ?? 1, glPeriod: m.gl_period ?? '', cashAsOf: m.cash_as_of ? d(m.cash_as_of) : '' };
 
-  return { meta: metaObj, properties, cash: cashMap, cashAdjustments, gl: glLines, projects, contracts: contractRecords };
+  const pipelineItems = pipeline.rows.map((r: any) => ({
+    id: r.id, property: r.property_code, name: r.name, status: r.status,
+    assignee: r.assignee ?? '', priority: r.priority || 'med',
+    estimatedCost: r.estimated_cost != null ? Number(r.estimated_cost) : null,
+    targetDate: r.target_date ? String(r.target_date).slice(0,10) : null,
+    notes: r.notes || [], createdAt: r.created_at, updatedAt: r.updated_at,
+  }));
+  return { meta: metaObj, properties, cash: cashMap, cashAdjustments, gl: glLines, projects, contracts: contractRecords, pipeline: pipelineItems };
 }

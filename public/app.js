@@ -369,7 +369,7 @@ function rail(){
   nav.append(el('div',{class:'grp'},'Overview'));
   nav.append(item('dashboard','◧','Dashboard'));
   nav.append(item('projects','▤','Projects',counts.active));
-  nav.append(item('inhouse','🛠','In-house',S.projects.filter(isInHouse).length||null));
+  nav.append(item('inhouse','📋','Pipeline',(S.pipeline||[]).length||null));
   nav.append(item('contracts','▦','Contracts',(S.contracts||[]).length||null));
   nav.append(el('div',{class:'grp'},'Properties'));
   [...new Set(S.properties.map(p=>p.region))].forEach(reg=>{
@@ -395,7 +395,7 @@ function rail(){
 
 function mainCol(){
   const m=el('div',{class:'main'});
-  const views={dashboard:viewDashboard,projects:viewProjects,inhouse:viewInHouse,contracts:viewContracts,property:viewProperty,cash:viewCash,data:viewData,tools:viewTools};
+  const views={dashboard:viewDashboard,projects:viewProjects,inhouse:viewPipeline,contracts:viewContracts,property:viewProperty,cash:viewCash,data:viewData,tools:viewTools};
   const {bar,body}=(views[VIEW.tab]||viewDashboard)();
   m.append(bar,el('div',{class:'content'},body));
   return m;
@@ -857,29 +857,245 @@ let _t;function debounced(){clearTimeout(_t);_t=setTimeout(render,180);}
 /* =========================================================
    IN-HOUSE TRACKING (own-crew projects)
 ========================================================= */
-function viewInHouse(){
-  const bar=topbar('Own crew','In-house projects',
-    el('button',{class:'btn accent',onclick:()=>openProject(null,{inHouse:true})},'+ New in-house project'));
-  const body=el('div',{});
-  const list=S.projects.filter(isInHouse);
-  if(!list.length){ body.append(el('div',{class:'empty'}, el('div',{class:'big'},'No in-house projects yet'),'Add one here, or toggle “In-house (own crew)” on any project in its editor.')); return {bar,body}; }
-  const bud=list.filter(ihIsBudget);
-  const tot=bud.reduce((a,p)=>a+ihTotal(p),0), done=bud.reduce((a,p)=>a+ihDone(p),0);
-  const inProg=list.filter(p=>!isComplete(p)&&!p.onHold).length;
-  const qtyCount=list.length-bud.length;
-  const k=el('div',{class:'grid kpis',style:'grid-template-columns:repeat(4,1fr)'});
-  const kpi=(l,v,s,cls)=>el('div',{class:'kpi'+(cls?' '+cls:'')}, el('div',{class:'lab'},l), el('div',{class:'val'},v), el('div',{class:'sub'},s));
-  k.append(kpi('In-house projects',String(list.length),`${inProg} in progress${qtyCount?` · ${qtyCount} by count`:''}`),
-    kpi('Est. to complete',fmt(tot),'budget-tracked'),
-    kpi('Completed to date',fmt(done),pct(tot?done/tot:0)+' of budget','accent'),
-    kpi('Remaining',fmt(tot-done),'budget work left'));
-  body.append(k);
-  const grid=el('div',{class:'ih-grid'});
-  list.sort((a,b)=>(a.onHold-b.onHold)||((isComplete(a)?1:0)-(isComplete(b)?1:0))||(ihPct(b)-ihPct(a)));
-  list.forEach(p=>grid.append(ihTile(p)));
-  body.append(grid);
-  return {bar,body};
+function viewPipeline(){
+  const PL_STATUS={idea:{label:'Idea',color:'var(--ink-3)'},proposed:{label:'Proposed',color:'var(--blue)'},approved:{label:'Approved',color:'var(--green)'},deferred:{label:'Deferred',color:'var(--amber)'}};
+  const PL_PRI={high:{label:'High',dot:'🔴'},med:{label:'Med',dot:'🟡'},low:{label:'Low',dot:'🟢'}};
+  let _propFilter='all'; let _statusFilter='all';
+  const pl=()=>(S.pipeline||[]);
+
+  const bar=topbar('Pipeline','Ideas & Pipeline',
+    el('button',{class:'btn accent sm',onclick:()=>openNewItem()},'+ New Idea'));
+  const body=el('div',{class:'pad'});
+
+  // Property filter chips
+  const propRow=el('div',{style:'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px'});
+  function buildPropChips(){
+    propRow.innerHTML='';
+    const all=_propFilter==='all';
+    const mkChip=(key,label)=>{
+      const on=_propFilter===key;
+      const c=el('button',{class:'chip',style:'cursor:pointer;font-size:11px;'+(on?'background:var(--blue);color:#fff;border-color:var(--blue)':''),
+        onclick:()=>{_propFilter=key;rebuildList();}},label);
+      propRow.append(c);
+    };
+    mkChip('all','All Properties');
+    S.properties.forEach(p=>mkChip(p.code,p.code));
+  }
+  buildPropChips();
+
+  // Status filter chips
+  const statRow=el('div',{style:'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px'});
+  function buildStatChips(){
+    statRow.innerHTML='';
+    [['all','All'],['idea','Idea'],['proposed','Proposed'],['approved','Approved'],['deferred','Deferred']].forEach(([key,label])=>{
+      const on=_statusFilter===key;
+      const c=el('button',{class:'chip',style:'cursor:pointer;font-size:11px;'+(on?'background:var(--blue);color:#fff;border-color:var(--blue)':''),
+        onclick:()=>{_statusFilter=key;rebuildList();}},label);
+      statRow.append(c);
+    });
+  }
+  buildStatChips();
+
+  const listWrap=el('div',{style:'display:flex;flex-direction:column;gap:10px'});
+
+  function rebuildList(){
+    buildPropChips(); buildStatChips(); listWrap.innerHTML='';
+    let items=pl();
+    if(_propFilter!=='all') items=items.filter(i=>i.property===_propFilter);
+    if(_statusFilter!=='all') items=items.filter(i=>i.status===_statusFilter);
+    if(!items.length){
+      listWrap.append(el('div',{class:'empty',style:'margin-top:32px'},
+        el('div',{class:'big'},'No items'),
+        _propFilter==='all'&&_statusFilter==='all'?'Add your first idea with + New Idea above.':'Try a different filter.'));
+      return;
+    }
+    items.forEach(item=>listWrap.append(renderCard(item)));
+  }
+
+  function renderCard(item){
+    const st=PL_STATUS[item.status]||PL_STATUS.idea;
+    const pr=PL_PRI[item.priority]||PL_PRI.med;
+    let expanded=false;
+    const card=el('div',{class:'panel',style:'padding:0;overflow:hidden'});
+
+    // Header row
+    const hdr=el('div',{style:'display:flex;align-items:center;gap:8px;padding:11px 14px 8px;cursor:pointer;'});
+    hdr.append(
+      propChip(item.property),
+      el('span',{class:'chip',style:'font-size:10px;background:transparent;border-color:'+st.color+';color:'+st.color},st.label),
+      el('span',{style:'font-size:12px;margin-left:2px',title:'Priority: '+pr.label},pr.dot),
+      el('div',{style:'flex:1'}),
+      el('button',{class:'btn ghost sm',style:'color:var(--ink-3);padding:2px 6px',title:'Delete',onclick:async e=>{
+        e.stopPropagation();
+        if(!confirm('Delete "'+item.name+'"?'))return;
+        await fetch('/api/pipeline/'+item.id,{method:'DELETE'});
+        const idx=(S.pipeline||[]).findIndex(x=>x.id===item.id);
+        if(idx>-1)(S.pipeline||[]).splice(idx,1);
+        card.remove();
+      }},'✕')
+    );
+
+    // Name (click to edit)
+    const nameEl=el('div',{style:'font-size:14px;font-weight:600;color:var(--ink-1);padding:0 14px 6px;cursor:text',
+      title:'Click to edit',
+      onclick:async e=>{
+        e.stopPropagation();
+        const v=prompt('Name:',item.name); if(v===null)return;
+        item.name=v||item.name;
+        await patchItem(item); nameEl.textContent=item.name;
+      }},item.name);
+
+    // Meta row (assignee, date, cost)
+    function mkMeta(){
+      const m=el('div',{style:'display:flex;gap:14px;flex-wrap:wrap;padding:0 14px 8px;font-size:11.5px;color:var(--ink-3);align-items:center'});
+      // Assignee
+      const aSpan=el('span',{style:'cursor:pointer',title:'Click to edit assignee',
+        onclick:async e=>{e.stopPropagation();const v=prompt('Assignee:',item.assignee||'');if(v===null)return;item.assignee=v;await patchItem(item);metaRow.replaceWith(mkMeta());}},
+        item.assignee?'👤 '+item.assignee:'👤 Unassigned');
+      // Target date
+      const dSpan=el('span',{style:'cursor:pointer',title:'Click to edit target date',
+        onclick:async e=>{e.stopPropagation();const v=prompt('Target date (YYYY-MM-DD):',item.targetDate||'');if(v===null)return;item.targetDate=v||null;await patchItem(item);metaRow.replaceWith(mkMeta());}},
+        item.targetDate?'📅 '+fmtDate(item.targetDate):'📅 No date');
+      // Est cost
+      const cSpan=el('span',{style:'cursor:pointer',title:'Click to edit estimated cost',
+        onclick:async e=>{e.stopPropagation();const v=prompt('Estimated cost ($):',item.estimatedCost??'');if(v===null)return;item.estimatedCost=v===''?null:+v;await patchItem(item);metaRow.replaceWith(mkMeta());}},
+        item.estimatedCost!=null?'💰 ~'+fmt(item.estimatedCost):'💰 No estimate');
+      // Status selector
+      const sel=el('select',{style:'font-size:11px;border:1px solid var(--line);border-radius:4px;padding:2px 4px;background:var(--panel);color:var(--ink-2);cursor:pointer',
+        onchange:async e=>{item.status=e.target.value;await patchItem(item);card.replaceWith(renderCard(item));}});
+      Object.entries(PL_STATUS).forEach(([k,v])=>{sel.append(el('option',{value:k,...(item.status===k?{selected:''}:{})},v.label));});
+      // Priority selector
+      const psel=el('select',{style:'font-size:11px;border:1px solid var(--line);border-radius:4px;padding:2px 4px;background:var(--panel);color:var(--ink-2);cursor:pointer',
+        onchange:async e=>{item.priority=e.target.value;await patchItem(item);card.replaceWith(renderCard(item));}});
+      Object.entries(PL_PRI).forEach(([k,v])=>{psel.append(el('option',{value:k,...(item.priority===k?{selected:''}:{})},v.label));});
+      m.append(aSpan,dSpan,cSpan,el('div',{style:'flex:1'}),el('span',{style:'color:var(--ink-3);font-size:11px'},sel),el('span',{},psel));
+      return m;
+    }
+    let metaRow=mkMeta();
+
+    // Notes preview + expand
+    const notesWrap=el('div',{style:'border-top:1px solid var(--line-2);padding:10px 14px'});
+    function drawNotes(){
+      notesWrap.innerHTML='';
+      const notes=[...(item.notes||[])].reverse(); // newest first
+      const toShow=expanded?notes:notes.slice(0,1);
+      if(toShow.length){
+        toShow.forEach(n=>{
+          const nRow=el('div',{style:'display:flex;gap:8px;margin-bottom:6px;align-items:flex-start'});
+          nRow.append(
+            el('div',{style:'flex:1;font-size:12px;color:var(--ink-2);line-height:1.45'},
+              el('span',{style:'font-size:10.5px;color:var(--ink-3);margin-right:6px'},n.date||''),
+              n.text||n.note||''),
+            el('button',{class:'btn ghost sm',style:'color:var(--rust);padding:1px 5px;flex-shrink:0;font-size:11px',
+              onclick:async e=>{e.stopPropagation();
+                item.notes=(item.notes||[]).filter(x=>(x.id||x.text)!==(n.id||n.text));
+                await patchItem(item); drawNotes();}}, '✕')
+          );
+          notesWrap.append(nRow);
+        });
+      } else {
+        notesWrap.append(el('div',{style:'font-size:12px;color:var(--ink-3);margin-bottom:6px'},'No notes yet.'));
+      }
+      // expand/collapse
+      if(notes.length>1){
+        notesWrap.append(el('button',{class:'btn ghost sm',style:'font-size:11px;color:var(--ink-3);margin-bottom:6px',
+          onclick:e=>{e.stopPropagation();expanded=!expanded;drawNotes();}},
+          expanded?'▲ Collapse':'▾ Show '+(notes.length-1)+' more note'+(notes.length-1===1?'':'s')));
+      }
+      // Add note
+      const ta=el('textarea',{placeholder:'Add a note…',style:'width:100%;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:7px 9px;resize:vertical;min-height:54px;box-sizing:border-box;background:var(--panel);color:var(--ink-1)',rows:2});
+      const addBtn=el('button',{class:'btn sm accent',style:'margin-top:5px',onclick:async e=>{
+        e.stopPropagation();
+        const txt=ta.value.trim(); if(!txt)return;
+        const note={id:uid('N'),text:txt,date:today()};
+        item.notes=[...(item.notes||[]),note];
+        await patchItem(item); ta.value=''; drawNotes();
+      }},'Add Note');
+      notesWrap.append(ta,el('div',{},addBtn));
+    }
+    drawNotes();
+
+    // Footer: promote button
+    const footer=el('div',{style:'border-top:1px solid var(--line-2);padding:8px 14px;display:flex;gap:8px;align-items:center'});
+    const promoteBtn=el('button',{class:'btn sm',style:'font-size:11px',onclick:async e=>{
+      e.stopPropagation();
+      if(!confirm('Promote "'+item.name+'" to a full project? This will create it on the Projects tab.'))return;
+      promoteBtn.disabled=true; promoteBtn.textContent='Promoting…';
+      try{
+        const r=await fetch('/api/pipeline/'+item.id+'/promote',{method:'POST'});
+        const out=await r.json();
+        S=await API.get('/state');
+        render(); toast('Promoted to project ✓');
+        // switch to projects tab
+        VIEW.tab='projects'; render();
+      }catch(err){promoteBtn.disabled=false;promoteBtn.textContent='→ Promote to Project';toast('Failed: '+err.message);}
+    }},'→ Promote to Project');
+    const age=item.createdAt?el('span',{style:'font-size:10.5px;color:var(--ink-3)'},'Added '+fmtDate(String(item.createdAt).slice(0,10))):'';
+    footer.append(promoteBtn,el('div',{style:'flex:1'}),age);
+
+    card.append(hdr,nameEl,metaRow,notesWrap,footer);
+    return card;
+  }
+
+  async function patchItem(item){
+    try{
+      const r=await fetch('/api/pipeline/'+item.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(item)});
+      const updated=await r.json();
+      const idx=(S.pipeline||[]).findIndex(x=>x.id===item.id);
+      if(idx>-1)(S.pipeline||[])[idx]=updated;
+    }catch(e){toast('Save failed: '+e.message);}
+  }
+
+  function openNewItem(){
+    const scrim=el('div',{class:'scrim modal-center',onclick:e=>{if(e.target===scrim)scrim.remove();}});
+    const sheet=el('div',{class:'sheet'});
+    const data={property:_propFilter!=='all'?_propFilter:(S.properties[0]?.code||''),name:'',status:'idea',assignee:'',priority:'med',estimatedCost:null,targetDate:null};
+    const head=el('div',{class:'sh'},el('h2',{style:'font-size:16px;flex:1'},'New Pipeline Item'),el('button',{class:'btn ghost',onclick:()=>scrim.remove()},'Cancel'));
+    const bb=el('div',{class:'sb'});
+    const propSel=el('select',{style:'width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink-1);margin-bottom:10px',
+      onchange:e=>data.property=e.target.value});
+    S.properties.forEach(p=>propSel.append(el('option',{value:p.code,...(data.property===p.code?{selected:''}:{})},p.code+' — '+p.name)));
+    const nameInp=el('input',{placeholder:'Project idea name',style:'width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink-1);margin-bottom:10px;box-sizing:border-box',
+      oninput:e=>data.name=e.target.value});
+    const row2=el('div',{class:'frow',style:'gap:8px;margin-bottom:10px'});
+    const aInp=el('input',{placeholder:'Assignee (optional)',style:'flex:1;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink-1)',oninput:e=>data.assignee=e.target.value});
+    const cInp=el('input',{type:'number',placeholder:'Est. cost ($)',style:'width:130px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink-1)',oninput:e=>data.estimatedCost=e.target.value?+e.target.value:null});
+    const tInp=el('input',{type:'date',style:'width:150px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink-1)',oninput:e=>data.targetDate=e.target.value||null});
+    row2.append(aInp,cInp,tInp);
+    const priRow=el('div',{style:'display:flex;gap:6px;margin-bottom:12px'});
+    ['high','med','low'].forEach(k=>{
+      const btn=el('button',{class:'chip',style:'cursor:pointer;font-size:11px;'+(data.priority===k?'background:var(--blue);color:#fff;border-color:var(--blue)':''),
+        onclick:()=>{data.priority=k;priRow.querySelectorAll('button').forEach((b,i)=>{const kk=['high','med','low'][i];b.style.background=kk===k?'var(--blue)':'';b.style.color=kk===k?'#fff':'';b.style.borderColor=kk===k?'var(--blue)':'';});}},
+        PL_PRI[k].dot+' '+PL_PRI[k].label);
+      priRow.append(btn);
+    });
+    const err=el('div',{style:'color:var(--rust);font-size:12px;min-height:16px'});
+    const saveBtn=el('button',{class:'btn accent',onclick:async()=>{
+      if(!data.name.trim()){err.textContent='Name is required.';return;}
+      saveBtn.disabled=true; saveBtn.textContent='Saving…';
+      try{
+        const r=await fetch('/api/pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+        const item=await r.json();
+        if(!S.pipeline)S.pipeline=[];
+        S.pipeline.unshift(item);
+        scrim.remove(); rebuildList(); toast('Added ✓');
+      }catch(e){err.textContent='Failed: '+e.message;saveBtn.disabled=false;saveBtn.textContent='Save';}
+    }},'Save');
+    bb.append(el('label',{style:'font-size:12px;color:var(--ink-3);display:block;margin-bottom:4px'},'Property'),propSel,
+      el('label',{style:'font-size:12px;color:var(--ink-3);display:block;margin-bottom:4px'},'Name'),nameInp,
+      el('div',{style:'font-size:12px;color:var(--ink-3);margin-bottom:4px'},'Assignee / Est. Cost / Target Date'),row2,
+      el('div',{style:'font-size:12px;color:var(--ink-3);margin-bottom:6px'},'Priority'),priRow,
+      err,el('div',{style:'display:flex;justify-content:flex-end;margin-top:6px'},saveBtn));
+    sheet.append(head,bb); scrim.append(sheet); document.body.append(scrim);
+    setTimeout(()=>nameInp.focus(),50);
+  }
+
+  rebuildList();
+  body.append(propRow,statRow,listWrap);
+  return{bar,body};
 }
+
+
 function ihTile(p){
   const pc=ihPct(p), done=isComplete(p);
   const t=el('div',{class:'ih-tile',style:'border-top:3px solid '+pcolor(p.property),onclick:()=>openProject(p.id)});

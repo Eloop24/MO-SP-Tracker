@@ -52,6 +52,19 @@ async function start() {
       await pool.query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS deposit_gl_line_id text`);
       await pool.query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS payment_structure jsonb`);
       await pool.query(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS misc_docs jsonb`);
+      await pool.query(`CREATE TABLE IF NOT EXISTS pipeline_items (
+        id text PRIMARY KEY,
+        property_code text NOT NULL,
+        name text NOT NULL DEFAULT '(untitled)',
+        status text NOT NULL DEFAULT 'idea',
+        assignee text,
+        priority text NOT NULL DEFAULT 'med',
+        estimated_cost numeric,
+        target_date date,
+        notes jsonb NOT NULL DEFAULT '[]',
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )`);
       await pool.query(`ALTER TABLE gl_lines ADD COLUMN IF NOT EXISTS ignored boolean NOT NULL DEFAULT false`);
       await pool.query(`ALTER TABLE gl_lines ADD COLUMN IF NOT EXISTS deleted boolean NOT NULL DEFAULT false`);
       await pool.query(`ALTER TABLE gl_lines ADD COLUMN IF NOT EXISTS is_new boolean NOT NULL DEFAULT false`);

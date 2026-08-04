@@ -236,6 +236,62 @@ api.post('/projects/:id/contract', async (req, res) => {
   res.json({ contractFileKey: fileKey, contractFileName: fileName, downloadUrl: `/api/files/${fileKey}?name=${encodeURIComponent(fileName)}` });
 });
 
+/* ---------- Pipeline ---------- */
+function mapPl(r: any) {
+  return { id: r.id, property: r.property_code, name: r.name, status: r.status,
+    assignee: r.assignee ?? '', priority: r.priority || 'med',
+    estimatedCost: r.estimated_cost != null ? Number(r.estimated_cost) : null,
+    targetDate: r.target_date ? String(r.target_date).slice(0,10) : null,
+    notes: r.notes || [], createdAt: r.created_at, updatedAt: r.updated_at };
+}
+api.post('/pipeline', async (req, res) => {
+  const b = req.body || {};
+  const id = uid('PI');
+  await query(
+    `INSERT INTO pipeline_items(id,property_code,name,status,assignee,priority,estimated_cost,target_date,notes)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+    [id, b.property, b.name||'(untitled)', b.status||'idea', b.assignee||null, b.priority||'med',
+     b.estimatedCost??null, b.targetDate||null, JSON.stringify(b.notes||[])]);
+  res.json(mapPl((await query('select * from pipeline_items where id=$1',[id])).rows[0]));
+});
+api.patch('/pipeline/:id', async (req, res) => {
+  const b = req.body || {};
+  await query(
+    `UPDATE pipeline_items SET property_code=$1,name=$2,status=$3,assignee=$4,priority=$5,
+     estimated_cost=$6,target_date=$7,notes=$8,updated_at=now() WHERE id=$9`,
+    [b.property, b.name||'(untitled)', b.status||'idea', b.assignee||null, b.priority||'med',
+     b.estimatedCost??null, b.targetDate||null, JSON.stringify(b.notes||[]), req.params.id]);
+  res.json(mapPl((await query('select * from pipeline_items where id=$1',[req.params.id])).rows[0]));
+});
+api.delete('/pipeline/:id', async (req, res) => {
+  await query('DELETE FROM pipeline_items WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+});
+api.post('/pipeline/:id/promote', async (req, res) => {
+  const row = (await query('select * from pipeline_items where id=$1',[req.params.id])).rows[0];
+  if (!row) return res.status(404).json({ error: 'not found' });
+  const pid = uid('P');
+  const today = new Date().toISOString().slice(0,10);
+  const notes: any[] = row.notes || [];
+  const progNotes = notes.map((n: any) => ({ id: uid('N'), date: n.date||today, note: n.text||n.note||'' }));
+  await tx(async (c) => {
+    await c.query(
+      `INSERT INTO projects(id,property_code,category,name,description,plan,action_item,contractor,
+         anticipated_cost,actual_cost,date_added,planned_start,planned_end,steps,notes,on_hold,pinned,
+         in_house,ih_unit,total_to_complete,amount_completed,no_contract,no_contract_set)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+      [pid, row.property_code, 'GENERAL', row.name, '', '', '',
+       '', row.estimated_cost??null, null, today, null, null,
+       JSON.stringify({}), '', false, false, false, 'budget', null, null, false, false]);
+    for (const n of progNotes) {
+      await c.query('INSERT INTO progress_notes(id,project_id,date,note) VALUES($1,$2,$3,$4)',
+        [n.id, pid, n.date, n.note]);
+    }
+  });
+  await query(`UPDATE pipeline_items SET status='approved',updated_at=now() WHERE id=$1`,[row.id]);
+  res.json({ projectId: pid });
+});
+
 /* ---------- Misc job documents ---------- */
 api.post('/projects/:id/docs/upload', memUpload.single('file'), async (req, res) => {
   try {
