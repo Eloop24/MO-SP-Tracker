@@ -68,6 +68,14 @@ async function start() {
       await pool.query(`ALTER TABLE gl_lines ADD COLUMN IF NOT EXISTS ignored boolean NOT NULL DEFAULT false`);
       await pool.query(`ALTER TABLE gl_lines ADD COLUMN IF NOT EXISTS deleted boolean NOT NULL DEFAULT false`);
       await pool.query(`ALTER TABLE gl_lines ADD COLUMN IF NOT EXISTS is_new boolean NOT NULL DEFAULT false`);
+      // gl_month: tracks which monthly paste each line came from (e.g. '2026-07')
+      const glMonthCol = await pool.query(`SELECT column_name FROM information_schema.columns WHERE table_name='gl_lines' AND column_name='gl_month'`);
+      if (!glMonthCol.rows.length) {
+        await pool.query(`ALTER TABLE gl_lines ADD COLUMN gl_month text`);
+        // One-time clear of SPMO GL data for fresh monthly-paste workflow
+        await pool.query(`DELETE FROM gl_lines WHERE property_code = 'SPMO'`);
+        console.log('[migration] Added gl_month column; cleared SPMO GL data for fresh start');
+      }
       await runMigrations();
       await seedIfEmpty();
       initialized = true;

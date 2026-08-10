@@ -594,85 +594,40 @@ api.post('/import/gl', memUpload.single('file'), (req, res) => {
 api.post('/import/gl/confirm', async (req, res) => {
   const p = pending.get(req.body?.token);
   if (!p || p.kind !== 'gl') return res.status(400).json({ error: 'preview expired — re-upload' });
-  const { tx: lines, period } = p.data;
+  const { tx: lines } = p.data;
+  const month: string | null = req.body?.month || null; // e.g. '2026-07'
   await tx(async (c) => {
-    // Preserve existing GL assignments (control# → project) so monthly re-upload
-    // does not wipe manually dragged assignments.
-    const saved = await c.query(
-      `select control, linked_project_id, ignored, deleted from gl_lines
-       where control is not null and control <> ''`
-    );
-    const assignments: Record<string,string> = {};
-    const ignoredControls = new Set<string>();
-    const deletedControls = new Set<string>();
-    const knownControls = new Set<string>();
-    for (const r of saved.rows) {
-      if (r.linked_project_id) assignments[r.control] = r.linked_project_id;
-      if (r.ignored) ignoredControls.add(r.control);
-      if (r.deleted) deletedControls.add(r.control);
-      knownControls.add(r.control);
-    }
-
-    // Build account-code → project map for auto-matching on re-import.
-    // Budget items have categories like "7322 - SP BUILDING REPAIRS"; extract leading 4-digit code.
-    const projRows = await c.query(
-      `select p.id, p.property_code, p.category,
-              coalesce(p.anticipated_cost,0) as budget,
-              coalesce(sum(g2.amount),0) as gl_spent
-       from projects p
-       left join gl_lines g2 on g2.linked_project_id = p.id
-       where p.in_house = false and p.category is not null and p.category <> ''
-       group by p.id, p.property_code, p.category, p.anticipated_cost
-       order by (coalesce(p.anticipated_cost,0) - coalesce(sum(g2.amount),0)) desc`
-    );
-    // acctMap: "PROPERTY|4-digit-code" → project id (budget items keyed by leading account number)
-    // catMap:  "PROPERTY|full-category" → project id (fallback for exact category match)
-    const acctMap: Record<string,string> = {};
-    const catMap: Record<string,string> = {};
-    for (const r of projRows.rows) {
-      const catFull = r.property_code + '|' + r.category;
-      if (!catMap[catFull]) catMap[catFull] = r.id;
-      const m = String(r.category || '').match(/^(\d{4})/);
-      if (m) {
-        const acctKey = r.property_code + '|' + m[1];
-        if (!acctMap[acctKey]) acctMap[acctKey] = r.id;
-      }
-    }
-
-    // Only replace lines for properties present in this upload — leaves other properties untouched
-    const affectedProps = [...new Set(lines.map((l: any) => l.property))];
-    await c.query('delete from gl_lines where property_code = any($1::text[])', [affectedProps]);
-    let autoMatched = 0;
     for (const g of lines) {
-      // 1. Saved manual assignment by control# takes priority
-      let lp = (g.control && assignments[g.control]) ? assignments[g.control] : null;
-      if (!lp) {
-        // 2. Match by 4-digit GL account number → budget item category prefix
-        if (g.account) {
-          const aKey = g.property + '|' + String(g.account).trim();
-          if (acctMap[aKey]) { lp = acctMap[aKey]; autoMatched++; }
-        }
-        // 3. Fallback: exact category text match
-        if (!lp && g.category) {
-          const catKey = g.property + '|' + g.category;
-          if (catMap[catKey]) { lp = catMap[catKey]; autoMatched++; }
+      // Upsert by control# — preserves existing ignore/assignment if re-pasting a corrected month
+      if (g.control) {
+        const existing = await c.query(
+          `SELECT id FROM gl_lines WHERE control = $1 AND property_code = $2`,
+          [g.control, g.property]
+        );
+        if (existing.rows.length) {
+          // Update fields that may have changed; leave ignored/linked_project_id intact
+          await c.query(
+            `UPDATE gl_lines SET amount=$1, vendor=$2, date=$3, remarks=$4, gl_month=COALESCE(gl_month,$5) WHERE id=$6`,
+            [Number(g.amount) || 0, g.vendor || null, g.date || null, g.remarks || null, month, existing.rows[0].id]
+          );
+          continue;
         }
       }
+      // New line — insert as unassigned
       await c.query(
-        `insert into gl_lines(id,property_code,account,category,date,vendor,control,amount,remarks,linked_project_id,partial,ignored,deleted,is_new)
-         values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,false,$11,$12,$13)`,
-        [g.id, g.property, g.account || null, g.category || null, dnull(g.date), g.vendor || null, g.control || null, Number(g.amount) || 0, g.remarks || null, lp,
-         !!(g.control && ignoredControls.has(g.control)),
-         !!(g.control && deletedControls.has(g.control)),
-         !(g.control && knownControls.has(g.control))]
+        `INSERT INTO gl_lines(id,property_code,account,category,date,vendor,control,amount,remarks,linked_project_id,partial,ignored,deleted,is_new,gl_month)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,null,false,false,false,true,$10)`,
+        [g.id, g.property, g.account || null, g.category || null, g.date || null,
+         g.vendor || null, g.control || null, Number(g.amount) || 0,
+         g.remarks || null, month]
       );
     }
-    console.log(`GL import: ${lines.length} lines, ${autoMatched} auto-matched by category`);
-    if (period) await c.query('update app_meta set gl_period=$1 where id=1', [period]);
+    if (month) await c.query(`UPDATE app_meta SET gl_period=$1 WHERE id=1`, [month]);
   });
   pending.delete(req.body.token);
   res.json({ ok: true, count: lines.length });
 });
+
 
 api.post('/import/cushion', memUpload.single('file'), async (req, res) => {
   try {
