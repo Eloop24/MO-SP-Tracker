@@ -249,9 +249,18 @@ api.post('/tools/word-to-pdf', memUpload.single('file'), async (req, res) => {
   const tmpOut = `${tmpdir()}/mo_doc_${stamp}.pdf`;
   try {
     await writeFile(tmpIn, req.file.buffer);
-    await execFileAsync('libreoffice', [
-      '--headless', '--convert-to', 'pdf', '--outdir', tmpdir(), tmpIn
-    ], { env: { ...process.env, HOME: '/root' }, timeout: 30000 });
+    const loProfile = `${tmpdir()}/lo_profile_${stamp}`;
+    const { stdout: loOut, stderr: loErr } = await execFileAsync('libreoffice', [
+      '--headless',
+      '--norestore',
+      '--nofirststartwizard',
+      `--env:UserInstallation=file://${loProfile}`,
+      '--convert-to', 'pdf',
+      '--outdir', tmpdir(),
+      tmpIn,
+    ], { env: { ...process.env, HOME: '/tmp' }, timeout: 60000 });
+    if (loErr) console.log('[word-to-pdf] libreoffice stderr:', loErr);
+    if (loOut) console.log('[word-to-pdf] libreoffice stdout:', loOut);
     const pdfBuf = await readFile(tmpOut);
     const outName = (req.file.originalname || 'document').replace(/\.docx?$/i, '.pdf');
     res.setHeader('Content-Type', 'application/pdf');
