@@ -2772,7 +2772,7 @@ function viewPropertyBudgetTracker(code){
               sel.value='';
               sel.onchange=async()=>{
                 const pid=sel.value; if(!pid)return;
-                await API.send('PATCH','/gl/'+g.id+'/link',{projectId:pid,partial:false});
+                await API.send('PATCH','/gl/'+g.id+'/link',{linkedProjectId:pid,partial:false});
                 await afterWrite('GL line assigned');
               };
               row.append(el('td',{style:'padding:4px 12px;white-space:nowrap'},
@@ -2798,7 +2798,7 @@ function viewPropertyBudgetTracker(code){
                   el('span',{style:'font-size:11px;color:var(--green)'},'📂 '+(linked?(linked.name||linked.category||'').slice(0,22):'?')),
                   el('button',{class:'btn ghost sm',style:'font-size:10px',title:'Move back to Unassigned',
                     onclick:async()=>{
-                      await API.send('PATCH','/gl/'+g.id+'/link',{projectId:null,partial:false});
+                      await API.send('PATCH','/gl/'+g.id+'/link',{linkedProjectId:null,partial:false});
                       await afterWrite();}
                   },'↩'))));
             }
