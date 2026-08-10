@@ -2378,10 +2378,8 @@ function viewPropertyBudgetTracker(code){
   const totalBudget=budgetItems.reduce((a,p2)=>a+(Number(p2.anticipatedCost)||0),0);
   const totalSpent =budgetItems.reduce((a,p2)=>a+effectiveSpent(p2),0);
   const totalContracted=budgetItems.reduce((a,p2)=>a+contractedTotal(p2),0);
-  // GL spend not linked to any budget item — reduces available variance
-  const unbudgetedGlSpend=allGls.filter(g=>Number(g.amount)>0&&!budgetItems.some(bi=>bi.id===g.linkedProjectId)).reduce((a,g)=>a+(Number(g.amount)||0),0);
-  const totalVar   =totalSpent+totalContracted-totalBudget;  // budgeted items only
-  const netVar     =totalVar+unbudgetedGlSpend;              // includes unbudgeted GL
+  const totalVar   =totalSpent+totalContracted-totalBudget;
+  const netVar     =totalVar;
   const varColor   =netVar>500?'var(--rust)':netVar<-500?'var(--green)':'var(--ink)';
 
   const bp=el('div',{class:'panel',style:'overflow:visible'});
@@ -2407,10 +2405,7 @@ function viewPropertyBudgetTracker(code){
   varStrip.append(el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600'},'Net Variance'));
   varStrip.append(el('div',{class:'mono',style:`font-size:16px;font-weight:700;margin-top:2px;color:${varColor}`},(netVar>=0?'+':'')+fmt(netVar,false)));
   varStrip.append(el('div',{style:'font-size:11px;color:var(--ink-3);margin-top:1px'},netVar<-100?fmt(Math.abs(netVar),false)+' available':netVar>100?'over budget':'on budget'));
-  strip.append(kk('Total Budget',totalBudget),kk('GL Spent',totalSpent),
-    unbudgetedGlSpend?kk('Unbudgeted GL',unbudgetedGlSpend,'var(--amber)'):kk('Under Contract',totalContracted),
-    unbudgetedGlSpend?kk('Under Contract',totalContracted):null,
-    varStrip);
+  strip.append(kk('Total Budget',totalBudget),kk('GL Spent',totalSpent),kk('Under Contract',totalContracted),varStrip);
   bp.append(strip);
 
   /* table header */
@@ -2587,119 +2582,10 @@ function viewPropertyBudgetTracker(code){
     tbody.append(detailRow);
   });
 
-  /* ── Unbudgeted GL rows: group by account, show red positive variance ─── */
-  const unbudgetedGls=allGls.filter(g=>Number(g.amount)>0&&!g.ignored&&!budgetItems.some(bi=>bi.id===g.linkedProjectId));
-  if(unbudgetedGls.length){
-    // group by account code (fall back to category, then vendor)
-    const groups=new Map();
-    unbudgetedGls.forEach(g=>{
-      const key=g.account||g.category||'Other';
-      const grp=groups.get(key)||{key,label:g.category||g.account||'Other',total:0,lines:[]};
-      grp.total+=Number(g.amount)||0;
-      grp.lines.push(g);
-      groups.set(key,grp);
-    });
-    tbody.append(el('tr',{style:'background:var(--canvas)'},
-      el('td',{colspan:'6',style:'padding:5px 16px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:700;border-top:2px solid var(--line)'},'⚠ Unbudgeted GL Spend')));
-    groups.forEach(grp=>{
-      const notesKey='unbgd_notes_'+code+'_'+grp.key;
-      let ubExpanded=false;
-      const chevron=el('span',{style:'color:var(--ink-3);font-size:10px;margin-left:4px;user-select:none'},'▼');
-      const mainRow=el('tr',{style:'background:rgba(180,120,0,.05);border-bottom:1px solid var(--line-2);cursor:pointer',
-        onclick:()=>{ubExpanded=!ubExpanded;detailRow2.style.display=ubExpanded?'':'none';chevron.textContent=ubExpanded?'▲':'▼';},
-        ondragover:e=>{if(!_draggingBudgetId){e.preventDefault();if(_draggingFromPrId){mainRow.style.background='rgba(46,125,87,.12)';mainRow.style.outline='2px dashed var(--green)';}else{mainRow.style.background='rgba(180,120,0,.12)';mainRow.style.outline='2px dashed var(--amber)';}}},
-        ondragleave:()=>{mainRow.style.background='rgba(180,120,0,.05)';mainRow.style.outline='';},
-        ondrop:async e=>{e.preventDefault();mainRow.style.background='rgba(180,120,0,.05)';mainRow.style.outline='';
-          const gid=e.dataTransfer.getData('glId');if(!gid)return;
-          const g=S.gl.find(x=>x.id===gid||String(x.id)===gid);if(!g)return;
-          if(g.linkedProjectId){
-            // Assigned chip → unassign (return to pool)
-            g.linkedProjectId=null;await linkGl(g,'Returned to pool ✓');
-          } else {
-            // Unbudgeted chip → move to different account group
-            if(_draggingUnbgdKey===grp.key)return; // same group, no-op
-            const _oldAcct=g.account;const _oldCat=g.category;
-            g.account=grp.key;g.category=grp.label;
-            const _r=await fetch('/api/gl/'+g.id+'/account',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({account:grp.key,category:grp.label})});
-            if(!_r.ok){g.account=_oldAcct;g.category=_oldCat;toast('Error moving GL line');return;}
-            await afterWrite('Moved → '+grp.label);
-          }}});
-      mainRow.append(
-        el('td',{style:'padding:7px 12px;font-size:11px;color:var(--amber);font-family:var(--mono)'},grp.key),
-        el('td',{style:'padding:7px 12px;font-size:12px;color:var(--ink-2)'},
-          el('div',{style:'display:flex;align-items:center;gap:6px'},
-            el('span',{style:'font-size:13px;font-weight:600'},grp.label.replace(/^SP\s*/i,'').slice(0,40)),
-            chevron),
-          el('div',{style:'font-size:10.5px;color:var(--ink-3);margin-top:2px'},grp.lines.length+' line'+(grp.lines.length===1?'':'s')+' · no budget set')),
-        el('td',{style:'padding:7px 16px;text-align:right;color:var(--ink-3)'},'—'),
-        el('td',{style:'padding:7px 16px;text-align:right;font-family:var(--mono);font-size:12px'},fmt(grp.total,false)),
-        el('td',{style:'padding:7px 16px;text-align:right;color:var(--ink-3)'},'—'),
-        el('td',{style:'padding:7px 16px;text-align:right;font-family:var(--mono);font-weight:700;color:var(--rust)'},'+'+fmt(grp.total,false)));
-      const detailRow2=el('tr',{style:'display:none;background:rgba(180,120,0,.03);border-bottom:2px solid rgba(180,120,0,.15)'});
-      const detailCell2=el('td',{colspan:'6',style:'padding:10px 16px'});
-      function redrawUnbgd(){
-        detailCell2.innerHTML='';
-        const layout2=el('div',{style:'display:grid;grid-template-columns:1fr 280px;gap:14px;align-items:start'});
-        const lCol=el('div'); const rCol=el('div',{style:'border-left:1px solid var(--line-2);padding-left:14px'});
-        const linesHere=allGls.filter(g=>Number(g.amount)>0&&!g.ignored&&!budgetItems.some(bi=>bi.id===g.linkedProjectId)&&(g.account||g.category||'Other')===grp.key);
-        if(linesHere.length){
-          lCol.append(el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3);font-weight:700;margin-bottom:8px'},
-            'GL Charges · '+linesHere.length+' line'+(linesHere.length===1?'':'s')+' · '+fmt(grp.total,false)));
-          const cw=el('div',{style:'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px'});
-          linesHere.forEach(g=>{
-            const gs2=String(g.id);
-            const chip2=el('div',{draggable:'true',title:'Drag to assign to a budget item',
-              style:'display:flex;flex-direction:column;background:rgba(180,120,0,.08);border:1px solid rgba(180,120,0,.3);border-radius:8px;padding:6px 10px;font-size:12px;min-width:160px;max-width:260px;gap:2px;cursor:grab',
-              ondragstart:e=>{e.dataTransfer.setData('glId',gs2);e.dataTransfer.effectAllowed='link';chip2.style.opacity='.4';_draggingUnbgdKey=grp.key;_showRetBar();},
-              ondragend:()=>{chip2.style.opacity='1';_draggingUnbgdKey=null;_hideRetBar();}});
-            const tr2=el('div',{style:'display:flex;align-items:center;gap:6px;flex-wrap:wrap'});
-            tr2.append(el('span',{style:'color:var(--ink-3);font-size:10px'},'⠿'),
-              el('span',{class:'mono',style:'font-weight:700;color:var(--amber);font-size:13px'},fmt(g.amount,false)),
-              el('span',{style:'color:var(--ink-1);font-weight:500'},g.vendor?g.vendor.slice(0,22):''));
-            if(g.date)tr2.append(el('span',{style:'color:var(--ink-3);font-size:11px;margin-left:auto'},g.date));
-            chip2.append(tr2);
-            if(g.remarks)chip2.append(el('div',{style:'font-size:11px;color:var(--ink-2);font-style:italic;border-top:1px solid rgba(180,120,0,.15);padding-top:4px;margin-top:2px'},'"'+g.remarks.slice(0,65)+(g.remarks.length>65?'…':'')+'"'));
-            const actRow2=el('div',{style:'display:flex;gap:5px;margin-top:4px;padding-top:4px;border-top:1px solid rgba(180,120,0,.15)'});
-            actRow2.append(el('button',{class:'btn ghost sm',style:'font-size:11px',onclick:e=>{e.stopPropagation();showMoveMenu(g,chip2,null,()=>afterWrite('GL assigned ✓'),code);}},'→ Assign to…'));
-            chip2.append(actRow2);
-            cw.append(chip2);
-          });
-          lCol.append(cw);
-        }
-        /* ubDz removed — use green Return to Pool bar at top of budget table */
-        lCol.append(el('button',{class:'btn sm',style:'font-size:11px;margin-top:4px',
-          onclick:async e=>{e.stopPropagation();
-            const nm=prompt('Name for this budget item:',grp.label.replace(/^SP\s*/i,'').slice(0,60));
-            if(!nm||!nm.trim())return;
-            const catStr=grp.key+(grp.label&&grp.label!==grp.key?' - '+grp.label.replace(/^SP\s*/i,'').slice(0,30):'');
-            const ni={id:uid('P'),property:code,category:catStr,name:nm.trim(),description:'',anticipatedCost:0,
-              steps:{},notes:localStorage.getItem(notesKey)||'',onHold:false,pinned:false,inHouse:false,isBudgetItem:true,dateAdded:today()};
-            await API.send('POST','/projects',ni);
-            for(const g of linesHere.filter(g=>!g.linkedProjectId)){g.linkedProjectId=ni.id;await linkGl(g,'Promoted · '+ni.name);}
-            await afterWrite('Added to budget: '+ni.name);
-          }},'+ Add to Budget'));
-        rCol.append(el('div',{style:'font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3);font-weight:700;margin-bottom:6px'},'📝 Notes'));
-        const nta=el('textarea',{style:'width:100%;min-height:80px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-size:12px;background:var(--panel);resize:vertical;box-sizing:border-box;line-height:1.5;color:var(--ink-1)',
-          placeholder:'Status, comments, follow-up…',
-          onblur:()=>localStorage.setItem(notesKey,nta.value)});
-        nta.value=localStorage.getItem(notesKey)||'';
-        rCol.append(nta);
-        layout2.append(lCol,rCol); detailCell2.append(layout2);
-      }
-      redrawUnbgd();
-      detailRow2.append(detailCell2);
-      tbody.append(mainRow,detailRow2);
-    });
-  }
 
   /* totals footer */
   const tfoot=el('tfoot',{});
-  if(unbudgetedGlSpend){
-    tfoot.append(el('tr',{style:'background:var(--canvas);border-top:1px solid var(--line-2);font-style:italic;color:var(--amber)'},
-      el('td',{colspan:'2',style:'padding:7px 16px;font-size:12px'},'⚠ Unbudgeted GL spend'),
-      el('td',{style:'padding:7px 16px;text-align:right;font-family:var(--mono);font-size:12px',colspan:'2'},'+'+fmt(unbudgetedGlSpend,false)),
-      el('td',{style:'padding:7px 16px;text-align:right;font-family:var(--mono);font-size:12px;color:var(--amber)'},'+'+fmt(unbudgetedGlSpend,false)+' to variance')));
-  }
+
   tfoot.append(el('tr',{style:'background:var(--panel-2);border-top:2px solid var(--line);font-weight:700'},
     el('td',{colspan:'2',style:'padding:10px 16px;font-size:13px'},'Total'),
     el('td',{style:'padding:10px 16px;text-align:right;font-family:var(--mono)'},fmt(totalBudget)),
