@@ -10,7 +10,8 @@ RUN apt-get update && \
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+# Skip postinstall (needs build-client.mjs which isn't copied yet)
+RUN npm ci --ignore-scripts
 COPY . .
 RUN npm run build
 
