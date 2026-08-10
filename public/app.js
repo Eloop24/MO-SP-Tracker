@@ -3188,8 +3188,8 @@ function viewTools(){
   body.append(pm.w);
 
   /* ── Word → PDF ── */
-  const wp=sect('Word → PDF','Drop a .docx file. Converted to HTML in your browser via mammoth.js, then opens a print dialog — choose "Save as PDF". Best for simple documents; complex layouts may shift slightly.');
-  const wpDrop=el('div',{style:'border:2px dashed var(--line-2);border-radius:8px;padding:18px 16px;text-align:center;cursor:pointer;color:var(--ink-3);font-size:13px;transition:border-color .15s',
+  const wp=sect('Word → PDF','Drop a .docx file — converted server-side using LibreOffice. Full formatting, fonts, tables and layout preserved. Downloads directly to your computer, nothing stored.');
+  const wpDrop=el('div',{style:'border:2px dashed var(--line-2);border-radius:8px;padding:24px 16px;text-align:center;cursor:pointer;color:var(--ink-3);font-size:13px;transition:border-color .15s',
     ondragover:e=>{e.preventDefault();wpDrop.style.borderColor='var(--accent)';},
     ondragleave:()=>{wpDrop.style.borderColor='var(--line-2)';},
     ondrop:e=>{e.preventDefault();wpDrop.style.borderColor='var(--line-2)';const f=e.dataTransfer.files[0];if(f)convertWord(f);},
@@ -3201,20 +3201,17 @@ function viewTools(){
   async function convertWord(file){
     wpDrop.textContent='Converting…'; wpDrop.style.opacity='.6'; wpStatus.textContent='';
     try{
-      if(!window._mammoth){
-        wpStatus.textContent='Loading mammoth.js…';
-        await new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js';s.onload=res;s.onerror=rej;document.head.append(s);});
-        window._mammoth=window.mammoth;
-      }
-      const buf=await file.arrayBuffer();
-      const result=await window._mammoth.convertToHtml({arrayBuffer:buf});
-      const html=result.value;
-      const pw=window.open('','_blank');
-      pw.document.write('<html><head><title>'+file.name+'</title><style>body{font-family:Arial,sans-serif;font-size:12pt;margin:1in;line-height:1.4}@media print{body{margin:.5in}}</style></head><body>'+html+'</body></html>');
-      pw.document.close();
-      pw.focus();
-      setTimeout(()=>pw.print(),400);
-      wpStatus.textContent='✓ Print dialog opened — choose "Save as PDF".'+(result.messages.length?' ('+result.messages.length+' formatting note'+(result.messages.length===1?'':'s')+')':'');
+      const fd=new FormData(); fd.append('file',file);
+      const r=await fetch('/api/tools/word-to-pdf',{method:'POST',body:fd});
+      if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.error||r.status);}
+      const blob=await r.blob();
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url;
+      a.download=file.name.replace(/\.docx?$/i,'.pdf');
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),5000);
+      wpStatus.textContent='✓ Downloaded as PDF.';
     }catch(e){wpStatus.textContent='Error: '+e.message;}
     wpDrop.textContent='📝 Drop a .docx file here, or click to browse'; wpDrop.style.opacity='1';
   }

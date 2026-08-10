@@ -4,6 +4,11 @@ import { randomUUID } from 'node:crypto';
 import { extname } from 'node:path';
 import type pg from 'pg';
 import { pool, query, tx, assembleState, rowToProject } from './db.js';
+import { execFile } from 'child_process';
+import { writeFile, readFile, unlink, access } from 'fs/promises';
+import { tmpdir } from 'os';
+import { promisify } from 'util';
+const execFileAsync = promisify(execFile);
 import { loadStateInto } from './seed.js';
 import { parseGL, parseCushion } from './importers.js';
 import { buildContract, type ContractVars, type BidAttachment } from './contract.js';
@@ -234,6 +239,32 @@ api.post('/projects/:id/contract', async (req, res) => {
   });
 
   res.json({ contractFileKey: fileKey, contractFileName: fileName, downloadUrl: `/api/files/${fileKey}?name=${encodeURIComponent(fileName)}` });
+});
+
+/* ---------- Word → PDF (server-side LibreOffice, no DB storage) ---------- */
+api.post('/tools/word-to-pdf', memUpload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'no file' });
+  const stamp = Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  const tmpIn  = `${tmpdir()}/mo_doc_${stamp}.docx`;
+  const tmpOut = `${tmpdir()}/mo_doc_${stamp}.pdf`;
+  try {
+    await writeFile(tmpIn, req.file.buffer);
+    await execFileAsync('libreoffice', [
+      '--headless', '--convert-to', 'pdf', '--outdir', tmpdir(), tmpIn
+    ], { env: { ...process.env, HOME: '/root' }, timeout: 30000 });
+    const pdfBuf = await readFile(tmpOut);
+    const outName = (req.file.originalname || 'document').replace(/\.docx?$/i, '.pdf');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${outName}"`);
+    res.send(pdfBuf);
+  } catch (err: any) {
+    console.error('[word-to-pdf]', err?.message || err);
+    if (!res.headersSent) res.status(500).json({ error: 'Conversion failed: ' + (err?.message || err) });
+  } finally {
+    for (const f of [tmpIn, tmpOut]) {
+      access(f).then(() => unlink(f)).catch(() => {});
+    }
+  }
 });
 
 /* ---------- Pipeline ---------- */
