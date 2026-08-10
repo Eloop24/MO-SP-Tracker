@@ -860,183 +860,286 @@ let _t;function debounced(){clearTimeout(_t);_t=setTimeout(render,180);}
 function viewPipeline(){
   const PL_STATUS={idea:{label:'Idea',color:'var(--ink-3)'},proposed:{label:'Proposed',color:'var(--blue)'},approved:{label:'Approved',color:'var(--green)'},deferred:{label:'Deferred',color:'var(--amber)'}};
   const PL_PRI={high:{label:'High',dot:'🔴'},med:{label:'Med',dot:'🟡'},low:{label:'Low',dot:'🟢'}};
-  let _propFilter='all'; let _statusFilter='all';
-  const pl=()=>(S.pipeline||[]);
 
-  const bar=topbar('Pipeline','Ideas & Pipeline',
-    el('button',{class:'btn accent sm',onclick:()=>openNewItem()},'+ New Idea'));
+  let _selected=null; // property code when drilled in
+
+  const bar=topbar('Pipeline','Property Pipeline');
   const body=el('div',{class:'pad'});
+  const stage=el('div',{}); body.append(stage);
 
-  // Property filter chips
-  const propRow=el('div',{style:'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px'});
-  function buildPropChips(){
-    propRow.innerHTML='';
-    const all=_propFilter==='all';
-    const mkChip=(key,label)=>{
-      const on=_propFilter===key;
-      const c=el('button',{class:'chip',style:'cursor:pointer;font-size:11px;'+(on?'background:var(--blue);color:#fff;border-color:var(--blue)':''),
-        onclick:()=>{_propFilter=key;rebuildList();}},label);
-      propRow.append(c);
-    };
-    mkChip('all','All Properties');
-    S.properties.forEach(p=>mkChip(p.code,p.code));
+  function render(){
+    stage.innerHTML='';
+    if(_selected) stage.append(propDetail(_selected));
+    else stage.append(propGrid());
   }
-  buildPropChips();
 
-  // Status filter chips
-  const statRow=el('div',{style:'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px'});
-  function buildStatChips(){
-    statRow.innerHTML='';
-    [['all','All'],['idea','Idea'],['proposed','Proposed'],['approved','Approved'],['deferred','Deferred']].forEach(([key,label])=>{
-      const on=_statusFilter===key;
-      const c=el('button',{class:'chip',style:'cursor:pointer;font-size:11px;'+(on?'background:var(--blue);color:#fff;border-color:var(--blue)':''),
-        onclick:()=>{_statusFilter=key;rebuildList();}},label);
-      statRow.append(c);
+  /* ════════════════ PROPERTY GRID ════════════════ */
+  function propGrid(){
+    const wrap=el('div',{});
+    wrap.append(el('p',{style:'color:var(--ink-3);font-size:13px;margin:0 0 16px'},'Click a property to see active projects and pipeline ideas.'));
+    const grid=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px'});
+    S.properties.forEach(prop=>{
+      const activeProjs=(S.projects||[]).filter(p=>p.property===prop.code&&!isComplete(p)&&!p.isBudgetItem&&!p.onHold);
+      const ideas=(S.pipeline||[]).filter(i=>i.property===prop.code&&i.status!=='deferred');
+      const lastNote=activeProjs.flatMap(p=>(p.progressNotes||[])).sort((a,b)=>b.date>a.date?1:-1)[0];
+      const card=el('div',{class:'panel',style:'cursor:pointer;padding:0;overflow:hidden;transition:box-shadow .15s',
+        onmouseenter:e=>e.currentTarget.style.boxShadow='0 4px 16px rgba(0,0,0,.25)',
+        onmouseleave:e=>e.currentTarget.style.boxShadow='',
+        onclick:()=>{_selected=prop.code;render();}});
+      card.append(el('div',{style:'height:4px;background:'+pcolor(prop.code)+''}));
+      const inner=el('div',{style:'padding:12px 14px'});
+      inner.append(
+        el('div',{style:'display:flex;align-items:center;gap:8px;margin-bottom:6px'},
+          el('span',{class:'chip',style:'font-size:11px;font-weight:700'},prop.code),
+          el('div',{style:'flex:1;font-size:12px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis'},prop.name)
+        ),
+        el('div',{style:'display:flex;gap:12px;margin-bottom:8px'},
+          el('div',{style:'text-align:center'},
+            el('div',{style:'font-size:20px;font-weight:700;color:var(--ink-1);font-family:var(--mono)'},String(activeProjs.length)),
+            el('div',{style:'font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em'},'Active')
+          ),
+          el('div',{style:'text-align:center'},
+            el('div',{style:'font-size:20px;font-weight:700;color:var(--blue);font-family:var(--mono)'},String(ideas.length)),
+            el('div',{style:'font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em'},'Ideas')
+          )
+        )
+      );
+      if(lastNote) inner.append(el('div',{style:'font-size:11px;color:var(--ink-3);border-top:1px solid var(--line-2);padding-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'},
+        lastNote.date+' · '+lastNote.note));
+      card.append(inner);
+      grid.append(card);
     });
-  }
-  buildStatChips();
-
-  const listWrap=el('div',{style:'display:flex;flex-direction:column;gap:10px'});
-
-  function rebuildList(){
-    buildPropChips(); buildStatChips(); listWrap.innerHTML='';
-    let items=pl();
-    if(_propFilter!=='all') items=items.filter(i=>i.property===_propFilter);
-    if(_statusFilter!=='all') items=items.filter(i=>i.status===_statusFilter);
-    if(!items.length){
-      listWrap.append(el('div',{class:'empty',style:'margin-top:32px'},
-        el('div',{class:'big'},'No items'),
-        _propFilter==='all'&&_statusFilter==='all'?'Add your first idea with + New Idea above.':'Try a different filter.'));
-      return;
-    }
-    items.forEach(item=>listWrap.append(renderCard(item)));
+    wrap.append(grid);
+    return wrap;
   }
 
-  function renderCard(item){
-    const st=PL_STATUS[item.status]||PL_STATUS.idea;
-    const pr=PL_PRI[item.priority]||PL_PRI.med;
-    let expanded=false;
-    const card=el('div',{class:'panel',style:'padding:0;overflow:hidden'});
+  /* ════════════════ PROPERTY DETAIL ════════════════ */
+  function propDetail(code){
+    const prop=S.properties.find(p=>p.code===code)||{code,name:code};
+    const wrap=el('div',{});
 
-    // Header row
-    const hdr=el('div',{style:'display:flex;align-items:center;gap:8px;padding:11px 14px 8px;cursor:pointer;'});
+    // Back + header
+    const hdr=el('div',{style:'display:flex;align-items:center;gap:12px;margin-bottom:18px'});
     hdr.append(
-      propChip(item.property),
-      el('span',{class:'chip',style:'font-size:10px;background:transparent;border-color:'+st.color+';color:'+st.color},st.label),
-      el('span',{style:'font-size:12px;margin-left:2px',title:'Priority: '+pr.label},pr.dot),
+      el('button',{class:'btn ghost sm',onclick:()=>{_selected=null;render();}},'← Back'),
+      el('span',{class:'chip',style:'font-size:12px;font-weight:700;background:'+pcolor(code)+';color:#fff;border-color:transparent'},code),
+      el('h3',{style:'margin:0;font-size:16px'},prop.name),
       el('div',{style:'flex:1'}),
-      el('button',{class:'btn ghost sm',style:'color:var(--ink-3);padding:2px 6px',title:'Delete',onclick:async e=>{
-        e.stopPropagation();
-        if(!confirm('Delete "'+item.name+'"?'))return;
-        await fetch('/api/pipeline/'+item.id,{method:'DELETE'});
-        const idx=(S.pipeline||[]).findIndex(x=>x.id===item.id);
-        if(idx>-1)(S.pipeline||[]).splice(idx,1);
-        card.remove();
-      }},'✕')
+      el('button',{class:'btn accent sm',onclick:()=>openNewItem(code)},'+ New Idea')
     );
+    wrap.append(hdr);
 
-    // Name (click to edit)
-    const nameEl=el('div',{style:'font-size:14px;font-weight:600;color:var(--ink-1);padding:0 14px 6px;cursor:text',
-      title:'Click to edit',
-      onclick:async e=>{
-        e.stopPropagation();
-        const v=prompt('Name:',item.name); if(v===null)return;
-        item.name=v||item.name;
-        await patchItem(item); nameEl.textContent=item.name;
-      }},item.name);
-
-    // Meta row (assignee, date, cost)
-    function mkMeta(){
-      const m=el('div',{style:'display:flex;gap:14px;flex-wrap:wrap;padding:0 14px 8px;font-size:11.5px;color:var(--ink-3);align-items:center'});
-      // Assignee
-      const aSpan=el('span',{style:'cursor:pointer',title:'Click to edit assignee',
-        onclick:async e=>{e.stopPropagation();const v=prompt('Assignee:',item.assignee||'');if(v===null)return;item.assignee=v;await patchItem(item);metaRow.replaceWith(mkMeta());}},
-        item.assignee?'👤 '+item.assignee:'👤 Unassigned');
-      // Target date
-      const dSpan=el('span',{style:'cursor:pointer',title:'Click to edit target date',
-        onclick:async e=>{e.stopPropagation();const v=prompt('Target date (YYYY-MM-DD):',item.targetDate||'');if(v===null)return;item.targetDate=v||null;await patchItem(item);metaRow.replaceWith(mkMeta());}},
-        item.targetDate?'📅 '+fmtDate(item.targetDate):'📅 No date');
-      // Est cost
-      const cSpan=el('span',{style:'cursor:pointer',title:'Click to edit estimated cost',
-        onclick:async e=>{e.stopPropagation();const v=prompt('Estimated cost ($):',item.estimatedCost??'');if(v===null)return;item.estimatedCost=v===''?null:+v;await patchItem(item);metaRow.replaceWith(mkMeta());}},
-        item.estimatedCost!=null?'💰 ~'+fmt(item.estimatedCost):'💰 No estimate');
-      // Status selector
-      const sel=el('select',{style:'font-size:11px;border:1px solid var(--line);border-radius:4px;padding:2px 4px;background:var(--panel);color:var(--ink-2);cursor:pointer',
-        onchange:async e=>{item.status=e.target.value;await patchItem(item);card.replaceWith(renderCard(item));}});
-      Object.entries(PL_STATUS).forEach(([k,v])=>{sel.append(el('option',{value:k,...(item.status===k?{selected:''}:{})},v.label));});
-      // Priority selector
-      const psel=el('select',{style:'font-size:11px;border:1px solid var(--line);border-radius:4px;padding:2px 4px;background:var(--panel);color:var(--ink-2);cursor:pointer',
-        onchange:async e=>{item.priority=e.target.value;await patchItem(item);card.replaceWith(renderCard(item));}});
-      Object.entries(PL_PRI).forEach(([k,v])=>{psel.append(el('option',{value:k,...(item.priority===k?{selected:''}:{})},v.label));});
-      m.append(aSpan,dSpan,cSpan,el('div',{style:'flex:1'}),el('span',{style:'color:var(--ink-3);font-size:11px'},sel),el('span',{},psel));
-      return m;
+    // ── Active Projects ──
+    const activeProjs=(S.projects||[]).filter(p=>p.property===code&&!isComplete(p)&&!p.isBudgetItem);
+    const projSect=el('div',{class:'panel',style:'margin-bottom:16px;padding:0;overflow:hidden'});
+    projSect.append(el('div',{class:'ph'},el('h3',{},'Active Projects'),el('div',{class:'sp'}),
+      el('span',{class:'bs-meta'},activeProjs.length+' project'+(activeProjs.length===1?'':'s'))));
+    const projBody=el('div',{class:'pad',style:'padding-top:8px'});
+    if(!activeProjs.length){
+      projBody.append(el('div',{style:'color:var(--ink-3);font-size:13px;padding:8px 0'},'No active projects for this property.'));
+    } else {
+      activeProjs.forEach(p=>{
+        let notesOpen=false;
+        const row=el('div',{style:'padding:10px 0;border-bottom:1px solid var(--line-2)'});
+        const top=el('div',{style:'display:flex;align-items:center;gap:8px;cursor:pointer',onclick:()=>openProject(p.id)});
+        const stageLabel=isComplete(p)?'Done':(stage(p)>=0?LIFECYCLE[stage(p)].label:'Planned');
+        top.append(
+          el('div',{style:'flex:1'},
+            el('span',{style:'font-size:13px;font-weight:600;color:var(--ink-1)'},p.name),
+            p.contractor?el('span',{style:'font-size:11px;color:var(--ink-3);margin-left:8px'},'▷ '+p.contractor):''),
+          el('span',{class:'chip',style:'font-size:10px'},stageLabel),
+          p.anticipatedCost!=null?el('span',{style:'font-size:11px;color:var(--ink-3);white-space:nowrap'},fmt(p.anticipatedCost)):'',
+          el('span',{style:'font-size:11px;color:var(--ink-3)'},'→')
+        );
+        row.append(top);
+        const notes=(p.progressNotes||[]).slice().sort((a,b)=>b.date>a.date?1:-1);
+        if(notes.length){
+          const noteToggle=el('button',{class:'btn ghost sm',style:'font-size:11px;color:var(--ink-3);margin-top:5px',
+            onclick:e=>{e.stopPropagation();notesOpen=!notesOpen;notesWrap.style.display=notesOpen?'block':'none';noteToggle.textContent=notesOpen?'▲ Hide notes':'▾ '+notes.length+' note'+(notes.length===1?'':'s');}},
+            '▾ '+notes.length+' note'+(notes.length===1?'':'s'));
+          const notesWrap=el('div',{style:'display:none;margin-top:6px;padding:8px 10px;background:var(--line-2);border-radius:6px'});
+          notes.forEach(n=>{
+            notesWrap.append(el('div',{style:'font-size:12px;color:var(--ink-2);margin-bottom:5px;line-height:1.4'},
+              el('span',{style:'font-size:10.5px;color:var(--ink-3);margin-right:6px'},n.date),n.note));
+          });
+          row.append(noteToggle,notesWrap);
+        }
+        projBody.append(row);
+      });
     }
-    let metaRow=mkMeta();
+    projSect.append(projBody);
+    wrap.append(projSect);
 
-    // Notes preview + expand
-    const notesWrap=el('div',{style:'border-top:1px solid var(--line-2);padding:10px 14px'});
-    function drawNotes(){
-      notesWrap.innerHTML='';
-      const notes=[...(item.notes||[])].reverse(); // newest first
-      const toShow=expanded?notes:notes.slice(0,1);
-      if(toShow.length){
-        toShow.forEach(n=>{
-          const nRow=el('div',{style:'display:flex;gap:8px;margin-bottom:6px;align-items:flex-start'});
-          nRow.append(
-            el('div',{style:'flex:1;font-size:12px;color:var(--ink-2);line-height:1.45'},
-              el('span',{style:'font-size:10.5px;color:var(--ink-3);margin-right:6px'},n.date||''),
-              n.text||n.note||''),
-            el('button',{class:'btn ghost sm',style:'color:var(--rust);padding:1px 5px;flex-shrink:0;font-size:11px',
-              onclick:async e=>{e.stopPropagation();
+    // ── Pipeline Ideas ──
+    const ideas=(S.pipeline||[]).filter(i=>i.property===code);
+    const ideaSect=el('div',{class:'panel',style:'padding:0;overflow:hidden'});
+    ideaSect.append(el('div',{class:'ph'},el('h3',{},'Pipeline Ideas'),el('div',{class:'sp'}),
+      el('span',{class:'bs-meta'},ideas.length+' idea'+(ideas.length===1?'':'s'))));
+    const ideaBody=el('div',{class:'pad',style:'padding-top:8px'});
+    if(!ideas.length){
+      ideaBody.append(el('div',{style:'color:var(--ink-3);font-size:13px;padding:8px 0'},'No ideas yet — add one with + New Idea above.'));
+    } else {
+      ideas.forEach(item=>{
+        const st=PL_STATUS[item.status]||PL_STATUS.idea;
+        const pr=PL_PRI[item.priority]||PL_PRI.med;
+        let notesOpen=false;
+        const row=el('div',{style:'padding:10px 0;border-bottom:1px solid var(--line-2)'});
+        // Top row
+        const topRow=el('div',{style:'display:flex;align-items:flex-start;gap:8px'});
+        const mainCol=el('div',{style:'flex:1'});
+        // Name (click to edit)
+        const nameEl=el('div',{style:'font-size:13px;font-weight:600;color:var(--ink-1);cursor:text;margin-bottom:3px',
+          onclick:async e=>{e.stopPropagation();const v=prompt('Name:',item.name);if(v===null)return;item.name=v||item.name;await patchItem(item);nameEl.textContent=item.name;}},item.name);
+        // Meta chips
+        const metaRow=el('div',{style:'display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:4px'});
+        const stSel=el('select',{style:'font-size:11px;border:1px solid var(--line);border-radius:4px;padding:2px 5px;background:var(--panel);color:'+st.color+';cursor:pointer',
+          onchange:async e=>{item.status=e.target.value;await patchItem(item);row.remove();ideaBody.insertBefore(renderIdeaRow(item),ideaBody.firstChild);}});
+        Object.entries(PL_STATUS).forEach(([k,v])=>stSel.append(el('option',{value:k,...(item.status===k?{selected:''}:{})},v.label)));
+        metaRow.append(stSel,el('span',{style:'font-size:11px;color:var(--ink-3)'},pr.dot+' '+pr.label));
+        if(item.assignee) metaRow.append(el('span',{style:'font-size:11px;color:var(--ink-3)'},'👤 '+item.assignee));
+        if(item.targetDate) metaRow.append(el('span',{style:'font-size:11px;color:var(--ink-3)'},'📅 '+fmtDate(item.targetDate)));
+        if(item.estimatedCost!=null) metaRow.append(el('span',{style:'font-size:11px;color:var(--ink-3)'},'💰 ~'+fmt(item.estimatedCost)));
+        mainCol.append(nameEl,metaRow);
+        // Notes summary
+        const notes=[...(item.notes||[])].reverse();
+        if(notes.length){
+          const preview=el('div',{style:'font-size:11.5px;color:var(--ink-3);cursor:pointer;margin-top:2px',
+            onclick:e=>{e.stopPropagation();notesOpen=!notesOpen;notesDetail.style.display=notesOpen?'block':'none';preview.style.display=notesOpen?'none':'block';}},
+            '▾ '+notes[0].date+' · '+( notes[0].text||notes[0].note||'').slice(0,80)+(notes.length>1?' (+'+( notes.length-1)+' more)':''));
+          const notesDetail=el('div',{style:'display:none;margin-top:6px;padding:8px 10px;background:var(--line-2);border-radius:6px'});
+          notes.forEach(n=>{
+            const nr=el('div',{style:'display:flex;gap:6px;margin-bottom:5px;align-items:flex-start'});
+            nr.append(
+              el('div',{style:'flex:1;font-size:12px;color:var(--ink-2);line-height:1.4'},
+                el('span',{style:'font-size:10.5px;color:var(--ink-3);margin-right:5px'},n.date||''),n.text||n.note||''),
+              el('button',{class:'btn ghost sm',style:'color:var(--rust);padding:1px 4px;font-size:11px',
+                onclick:async e=>{e.stopPropagation();item.notes=(item.notes||[]).filter(x=>(x.id||x.text)!==(n.id||n.text));await patchItem(item);nr.remove();}},'✕')
+            );
+            notesDetail.append(nr);
+          });
+          // Add note inline
+          const ta=el('textarea',{placeholder:'Add a note…',rows:2,style:'width:100%;font-size:12px;border:1px solid var(--line);border-radius:5px;padding:6px 8px;resize:vertical;background:var(--panel);color:var(--ink-1);box-sizing:border-box;margin-top:6px'});
+          const addBtn=el('button',{class:'btn sm accent',style:'margin-top:4px',onclick:async e=>{
+            e.stopPropagation();const txt=ta.value.trim();if(!txt)return;
+            item.notes=[...(item.notes||[]),{id:uid('N'),text:txt,date:today()}];
+            await patchItem(item);ta.value='';
+            // rebuild notes
+            row.remove();ideaBody.insertBefore(buildIdeaRow(item),ideaBody.firstChild);
+          }},'Add Note');
+          notesDetail.append(ta,addBtn);
+          mainCol.append(preview,notesDetail);
+        } else {
+          // No notes yet — inline add
+          const ta=el('textarea',{placeholder:'Add first note…',rows:2,style:'width:100%;font-size:12px;border:1px solid var(--line);border-radius:5px;padding:6px 8px;resize:vertical;background:var(--panel);color:var(--ink-1);box-sizing:border-box;margin-top:4px'});
+          const addBtn=el('button',{class:'btn sm accent',style:'margin-top:4px',onclick:async e=>{
+            e.stopPropagation();const txt=ta.value.trim();if(!txt)return;
+            item.notes=[{id:uid('N'),text:txt,date:today()}];
+            await patchItem(item);
+            row.remove();ideaBody.insertBefore(buildIdeaRow(item),ideaBody.firstChild);
+          }},'Add Note');
+          mainCol.append(ta,addBtn);
+        }
+        // Actions
+        const acts=el('div',{style:'display:flex;flex-direction:column;gap:4px;flex-shrink:0'});
+        acts.append(
+          el('button',{class:'btn ghost sm',style:'font-size:10px',onclick:async e=>{
+            e.stopPropagation();if(!confirm('Promote "'+item.name+'" to a full project?'))return;
+            const r=await fetch('/api/pipeline/'+item.id+'/promote',{method:'POST'});
+            const out=await r.json();S=await API.get('/state');VIEW.tab='projects';render_app();toast('Promoted ✓');
+          }},'→ Project'),
+          el('button',{class:'btn ghost sm',style:'font-size:10px;color:var(--rust)',onclick:async e=>{
+            e.stopPropagation();if(!confirm('Delete?'))return;
+            await fetch('/api/pipeline/'+item.id,{method:'DELETE'});
+            const idx=(S.pipeline||[]).findIndex(x=>x.id===item.id);if(idx>-1)(S.pipeline||[]).splice(idx,1);
+            row.remove();
+          }},'✕')
+        );
+        topRow.append(mainCol,acts);
+        row.append(topRow);
+        return row;
+      });
+      function buildIdeaRow(item){ /* re-renders a single idea row — closure over ideaBody */
+        const tmp=el('div',{}); ideas.splice(ideas.findIndex(x=>x.id===item.id),1,item);
+        propDetail(code); // full re-render
+      }
+      ideas.forEach(item=>{ const r=buildRowFor(item); if(r)ideaBody.append(r); });
+    }
+    ideaSect.append(ideaBody);
+    wrap.append(ideaSect);
+    return wrap;
+
+    function buildRowFor(item){
+      const st=PL_STATUS[item.status]||PL_STATUS.idea;
+      const pr=PL_PRI[item.priority]||PL_PRI.med;
+      const row=el('div',{style:'padding:10px 0;border-bottom:1px solid var(--line-2)'});
+      const topRow=el('div',{style:'display:flex;align-items:flex-start;gap:8px'});
+      const mainCol=el('div',{style:'flex:1'});
+      const nameEl=el('div',{style:'font-size:13px;font-weight:600;color:var(--ink-1);cursor:text;margin-bottom:3px',
+        onclick:async()=>{const v=prompt('Name:',item.name);if(v===null)return;item.name=v||item.name;await patchItem(item);nameEl.textContent=item.name;}},item.name);
+      const metaRow=el('div',{style:'display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:4px'});
+      const stSel=el('select',{style:'font-size:11px;border:1px solid var(--line);border-radius:4px;padding:2px 5px;background:var(--panel);color:'+st.color+';cursor:pointer',
+        onchange:async e=>{item.status=e.target.value;await patchItem(item);row.replaceWith(buildRowFor(item));}});
+      Object.entries(PL_STATUS).forEach(([k,v])=>stSel.append(el('option',{value:k,...(item.status===k?{selected:''}:{})},v.label)));
+      metaRow.append(stSel,el('span',{style:'font-size:11px;color:var(--ink-3)'},pr.dot+' '+pr.label));
+      if(item.assignee) metaRow.append(el('span',{style:'font-size:11px;color:var(--ink-3)'},'👤 '+item.assignee));
+      if(item.targetDate) metaRow.append(el('span',{style:'font-size:11px;color:var(--ink-3)'},'📅 '+fmtDate(item.targetDate)));
+      if(item.estimatedCost!=null) metaRow.append(el('span',{style:'font-size:11px;color:var(--ink-3)'},'💰 ~'+fmt(item.estimatedCost)));
+      mainCol.append(nameEl,metaRow);
+      // notes
+      const notes=[...(item.notes||[])].reverse();
+      let notesOpen=false;
+      const notesArea=el('div',{style:'margin-top:4px'});
+      function drawNotesArea(){
+        notesArea.innerHTML='';
+        if(notes.length&&!notesOpen){
+          notesArea.append(el('div',{style:'font-size:11.5px;color:var(--ink-3);cursor:pointer',
+            onclick:()=>{notesOpen=true;drawNotesArea();}},
+            '▾ '+notes[0].date+' · '+(notes[0].text||notes[0].note||'').slice(0,90)+(notes.length>1?' (+'+( notes.length-1)+' more)':'')));
+        } else {
+          if(notes.length) notesArea.append(el('div',{style:'font-size:11px;color:var(--ink-3);cursor:pointer;margin-bottom:4px',onclick:()=>{notesOpen=false;drawNotesArea();}},'▲ Collapse'));
+          const nd=el('div',{style:'padding:8px 10px;background:var(--line-2);border-radius:6px;margin-bottom:6px'});
+          notes.forEach(n=>{
+            const nr=el('div',{style:'display:flex;gap:6px;margin-bottom:4px'});
+            nr.append(el('div',{style:'flex:1;font-size:12px;color:var(--ink-2);line-height:1.4'},el('span',{style:'font-size:10.5px;color:var(--ink-3);margin-right:5px'},n.date||''),n.text||n.note||''),
+              el('button',{class:'btn ghost sm',style:'color:var(--rust);padding:1px 4px;font-size:11px',onclick:async()=>{
                 item.notes=(item.notes||[]).filter(x=>(x.id||x.text)!==(n.id||n.text));
-                await patchItem(item); drawNotes();}}, '✕')
-          );
-          notesWrap.append(nRow);
-        });
-      } else {
-        notesWrap.append(el('div',{style:'font-size:12px;color:var(--ink-3);margin-bottom:6px'},'No notes yet.'));
+                await patchItem(item);const i=notes.indexOf(n);if(i>-1)notes.splice(i,1);drawNotesArea();}},'✕'));
+            nd.append(nr);
+          });
+          notesArea.append(nd);
+        }
+        const ta=el('textarea',{placeholder:'Add a note…',rows:2,style:'width:100%;font-size:12px;border:1px solid var(--line);border-radius:5px;padding:6px 8px;resize:vertical;background:var(--panel);color:var(--ink-1);box-sizing:border-box'});
+        const addBtn=el('button',{class:'btn sm accent',style:'margin-top:4px',onclick:async()=>{
+          const txt=ta.value.trim();if(!txt)return;
+          const n={id:uid('N'),text:txt,date:today()};
+          item.notes=[...(item.notes||[]),n];notes.unshift(n);
+          await patchItem(item);ta.value='';notesOpen=true;drawNotesArea();
+        }},'Add Note');
+        notesArea.append(ta,addBtn);
       }
-      // expand/collapse
-      if(notes.length>1){
-        notesWrap.append(el('button',{class:'btn ghost sm',style:'font-size:11px;color:var(--ink-3);margin-bottom:6px',
-          onclick:e=>{e.stopPropagation();expanded=!expanded;drawNotes();}},
-          expanded?'▲ Collapse':'▾ Show '+(notes.length-1)+' more note'+(notes.length-1===1?'':'s')));
-      }
-      // Add note
-      const ta=el('textarea',{placeholder:'Add a note…',style:'width:100%;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:7px 9px;resize:vertical;min-height:54px;box-sizing:border-box;background:var(--panel);color:var(--ink-1)',rows:2});
-      const addBtn=el('button',{class:'btn sm accent',style:'margin-top:5px',onclick:async e=>{
-        e.stopPropagation();
-        const txt=ta.value.trim(); if(!txt)return;
-        const note={id:uid('N'),text:txt,date:today()};
-        item.notes=[...(item.notes||[]),note];
-        await patchItem(item); ta.value=''; drawNotes();
-      }},'Add Note');
-      notesWrap.append(ta,el('div',{},addBtn));
+      drawNotesArea();
+      mainCol.append(notesArea);
+      const acts=el('div',{style:'display:flex;flex-direction:column;gap:4px;flex-shrink:0'});
+      acts.append(
+        el('button',{class:'btn ghost sm',style:'font-size:10px',onclick:async()=>{
+          if(!confirm('Promote "'+item.name+'" to a full project?'))return;
+          const r=await fetch('/api/pipeline/'+item.id+'/promote',{method:'POST'});
+          await r.json();S=await API.get('/state');VIEW.tab='projects';render_app();toast('Promoted ✓');
+        }},'→ Project'),
+        el('button',{class:'btn ghost sm',style:'font-size:10px;color:var(--rust)',onclick:async()=>{
+          if(!confirm('Delete "'+item.name+'"?'))return;
+          await fetch('/api/pipeline/'+item.id,{method:'DELETE'});
+          const idx=(S.pipeline||[]).findIndex(x=>x.id===item.id);if(idx>-1)(S.pipeline||[]).splice(idx,1);
+          row.remove();
+        }},'✕')
+      );
+      topRow.append(mainCol,acts);
+      row.append(topRow);
+      return row;
     }
-    drawNotes();
-
-    // Footer: promote button
-    const footer=el('div',{style:'border-top:1px solid var(--line-2);padding:8px 14px;display:flex;gap:8px;align-items:center'});
-    const promoteBtn=el('button',{class:'btn sm',style:'font-size:11px',onclick:async e=>{
-      e.stopPropagation();
-      if(!confirm('Promote "'+item.name+'" to a full project? This will create it on the Projects tab.'))return;
-      promoteBtn.disabled=true; promoteBtn.textContent='Promoting…';
-      try{
-        const r=await fetch('/api/pipeline/'+item.id+'/promote',{method:'POST'});
-        const out=await r.json();
-        S=await API.get('/state');
-        render(); toast('Promoted to project ✓');
-        // switch to projects tab
-        VIEW.tab='projects'; render();
-      }catch(err){promoteBtn.disabled=false;promoteBtn.textContent='→ Promote to Project';toast('Failed: '+err.message);}
-    }},'→ Promote to Project');
-    const age=item.createdAt?el('span',{style:'font-size:10.5px;color:var(--ink-3)'},'Added '+fmtDate(String(item.createdAt).slice(0,10))):'';
-    footer.append(promoteBtn,el('div',{style:'flex:1'}),age);
-
-    card.append(hdr,nameEl,metaRow,notesWrap,footer);
-    return card;
   }
 
+  /* ════════════════ SHARED HELPERS ════════════════ */
   async function patchItem(item){
     try{
       const r=await fetch('/api/pipeline/'+item.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(item)});
@@ -1046,52 +1149,48 @@ function viewPipeline(){
     }catch(e){toast('Save failed: '+e.message);}
   }
 
-  function openNewItem(){
+  function openNewItem(code){
     const scrim=el('div',{class:'scrim modal-center',onclick:e=>{if(e.target===scrim)scrim.remove();}});
     const sheet=el('div',{class:'sheet'});
-    const data={property:_propFilter!=='all'?_propFilter:(S.properties[0]?.code||''),name:'',status:'idea',assignee:'',priority:'med',estimatedCost:null,targetDate:null};
-    const head=el('div',{class:'sh'},el('h2',{style:'font-size:16px;flex:1'},'New Pipeline Item'),el('button',{class:'btn ghost',onclick:()=>scrim.remove()},'Cancel'));
+    const data={property:code||(S.properties[0]?.code||''),name:'',status:'idea',assignee:'',priority:'med',estimatedCost:null,targetDate:null};
+    const head=el('div',{class:'sh'},el('h2',{style:'font-size:16px;flex:1'},'New Pipeline Idea'),el('button',{class:'btn ghost',onclick:()=>scrim.remove()},'Cancel'));
     const bb=el('div',{class:'sb'});
-    const propSel=el('select',{style:'width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink-1);margin-bottom:10px',
-      onchange:e=>data.property=e.target.value});
-    S.properties.forEach(p=>propSel.append(el('option',{value:p.code,...(data.property===p.code?{selected:''}:{})},p.code+' — '+p.name)));
-    const nameInp=el('input',{placeholder:'Project idea name',style:'width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink-1);margin-bottom:10px;box-sizing:border-box',
-      oninput:e=>data.name=e.target.value});
+    const nameInp=el('input',{placeholder:'What is the idea?',style:'width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink-1);margin-bottom:10px;box-sizing:border-box',oninput:e=>data.name=e.target.value});
     const row2=el('div',{class:'frow',style:'gap:8px;margin-bottom:10px'});
-    const aInp=el('input',{placeholder:'Assignee (optional)',style:'flex:1;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink-1)',oninput:e=>data.assignee=e.target.value});
+    const aInp=el('input',{placeholder:'Assignee',style:'flex:1;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink-1)',oninput:e=>data.assignee=e.target.value});
     const cInp=el('input',{type:'number',placeholder:'Est. cost ($)',style:'width:130px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink-1)',oninput:e=>data.estimatedCost=e.target.value?+e.target.value:null});
     const tInp=el('input',{type:'date',style:'width:150px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink-1)',oninput:e=>data.targetDate=e.target.value||null});
     row2.append(aInp,cInp,tInp);
     const priRow=el('div',{style:'display:flex;gap:6px;margin-bottom:12px'});
     ['high','med','low'].forEach(k=>{
-      const btn=el('button',{class:'chip',style:'cursor:pointer;font-size:11px;'+(data.priority===k?'background:var(--blue);color:#fff;border-color:var(--blue)':''),
-        onclick:()=>{data.priority=k;priRow.querySelectorAll('button').forEach((b,i)=>{const kk=['high','med','low'][i];b.style.background=kk===k?'var(--blue)':'';b.style.color=kk===k?'#fff':'';b.style.borderColor=kk===k?'var(--blue)':'';});}},
-        PL_PRI[k].dot+' '+PL_PRI[k].label);
+      const on=data.priority===k;
+      const btn=el('button',{class:'chip',style:'cursor:pointer;font-size:11px;'+(on?'background:var(--blue);color:#fff;border-color:var(--blue)':''),
+        onclick:()=>{data.priority=k;priRow.querySelectorAll('button').forEach((b,i)=>{const kk=['high','med','low'][i];b.style.background=kk===k?'var(--blue)':'';b.style.color=kk===k?'#fff':'';b.style.borderColor=kk===k?'var(--blue)':'';});}},PL_PRI[k].dot+' '+PL_PRI[k].label);
       priRow.append(btn);
     });
     const err=el('div',{style:'color:var(--rust);font-size:12px;min-height:16px'});
     const saveBtn=el('button',{class:'btn accent',onclick:async()=>{
       if(!data.name.trim()){err.textContent='Name is required.';return;}
-      saveBtn.disabled=true; saveBtn.textContent='Saving…';
+      saveBtn.disabled=true;saveBtn.textContent='Saving…';
       try{
         const r=await fetch('/api/pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
         const item=await r.json();
-        if(!S.pipeline)S.pipeline=[];
-        S.pipeline.unshift(item);
-        scrim.remove(); rebuildList(); toast('Added ✓');
+        if(!S.pipeline)S.pipeline=[];S.pipeline.unshift(item);
+        scrim.remove();_selected=data.property;render();toast('Added ✓');
       }catch(e){err.textContent='Failed: '+e.message;saveBtn.disabled=false;saveBtn.textContent='Save';}
     }},'Save');
-    bb.append(el('label',{style:'font-size:12px;color:var(--ink-3);display:block;margin-bottom:4px'},'Property'),propSel,
-      el('label',{style:'font-size:12px;color:var(--ink-3);display:block;margin-bottom:4px'},'Name'),nameInp,
+    bb.append(el('label',{style:'font-size:12px;color:var(--ink-3);display:block;margin-bottom:4px'},'Idea'),nameInp,
       el('div',{style:'font-size:12px;color:var(--ink-3);margin-bottom:4px'},'Assignee / Est. Cost / Target Date'),row2,
       el('div',{style:'font-size:12px;color:var(--ink-3);margin-bottom:6px'},'Priority'),priRow,
       err,el('div',{style:'display:flex;justify-content:flex-end;margin-top:6px'},saveBtn));
-    sheet.append(head,bb); scrim.append(sheet); document.body.append(scrim);
+    sheet.append(head,bb);scrim.append(sheet);document.body.append(scrim);
     setTimeout(()=>nameInp.focus(),50);
   }
 
-  rebuildList();
-  body.append(propRow,statRow,listWrap);
+  // check if render_app exists, else fall back to render
+  function render_app(){ if(typeof render==='function')render(); }
+
+  render();
   return{bar,body};
 }
 
