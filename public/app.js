@@ -2717,9 +2717,9 @@ function viewPropertyBudgetTracker(code){
   function rebuildGLTable(){
     if(_glEl){_glEl.remove();_glEl=null;}
     const base=allGls.filter(g=>!g.deleted);
-    const glUnassigned=base.filter(g=>!g.linkedProjectId&&!g.ignored&&Number(g.amount)>0);
+    const glUnassigned=base.filter(g=>!g.linkedProjectId&&!g.ignored);
     const glIgnored=base.filter(g=>g.ignored);
-    const glAssigned=base.filter(g=>!!g.linkedProjectId&&!g.ignored&&Number(g.amount)>0);
+    const glAssigned=base.filter(g=>!!g.linkedProjectId&&!g.ignored);
     const totalUn=glUnassigned.reduce((a,g)=>a+Number(g.amount),0);
     const totalAss=glAssigned.reduce((a,g)=>a+Number(g.amount),0);
 
