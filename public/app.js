@@ -860,52 +860,41 @@ let _t;function debounced(){clearTimeout(_t);_t=setTimeout(render,180);}
 function viewPipeline(){
   const PL_STATUS={idea:{label:'Idea',color:'var(--ink-3)'},proposed:{label:'Proposed',color:'var(--blue)'},approved:{label:'Approved',color:'var(--green)'},deferred:{label:'Deferred',color:'var(--amber)'}};
   const PL_PRI={high:{label:'High',dot:'🔴'},med:{label:'Med',dot:'🟡'},low:{label:'Low',dot:'🟢'}};
-
-  let _selected=null; // property code when drilled in
-
+  let _selected=null;
   const bar=topbar('Pipeline','Property Pipeline');
   const body=el('div',{class:'pad'});
-  const stage=el('div',{}); body.append(stage);
+  const _container=el('div',{});
+  body.append(_container);
 
-  function render(){
-    stage.innerHTML='';
-    if(_selected) stage.append(propDetail(_selected));
-    else stage.append(propGrid());
+  function drawView(){
+    _container.innerHTML='';
+    _container.append(_selected ? buildDetail(_selected) : buildGrid());
   }
 
-  /* ════════════════ PROPERTY GRID ════════════════ */
-  function propGrid(){
+  /* ── GRID ── */
+  function buildGrid(){
     const wrap=el('div',{});
     wrap.append(el('p',{style:'color:var(--ink-3);font-size:13px;margin:0 0 16px'},'Click a property to see active projects and pipeline ideas.'));
-    const grid=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px'});
+    const grid=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px'});
     S.properties.forEach(prop=>{
-      const activeProjs=(S.projects||[]).filter(p=>p.property===prop.code&&!isComplete(p)&&!p.isBudgetItem&&!p.onHold);
+      const activeProjs=(S.projects||[]).filter(p=>p.property===prop.code&&!isComplete(p)&&!p.isBudgetItem);
       const ideas=(S.pipeline||[]).filter(i=>i.property===prop.code&&i.status!=='deferred');
-      const lastNote=activeProjs.flatMap(p=>(p.progressNotes||[])).sort((a,b)=>b.date>a.date?1:-1)[0];
-      const card=el('div',{class:'panel',style:'cursor:pointer;padding:0;overflow:hidden;transition:box-shadow .15s',
+      const allNotes=activeProjs.flatMap(p=>(p.progressNotes||[])).sort((a,b)=>b.date>a.date?1:-1);
+      const card=el('div',{class:'panel',style:'cursor:pointer;padding:0;overflow:hidden',
         onmouseenter:e=>e.currentTarget.style.boxShadow='0 4px 16px rgba(0,0,0,.25)',
         onmouseleave:e=>e.currentTarget.style.boxShadow='',
-        onclick:()=>{_selected=prop.code;render();}});
-      card.append(el('div',{style:'height:4px;background:'+pcolor(prop.code)+''}));
+        onclick:()=>{_selected=prop.code;drawView();}});
+      card.append(el('div',{style:'height:4px;background:'+pcolor(prop.code)}));
       const inner=el('div',{style:'padding:12px 14px'});
       inner.append(
-        el('div',{style:'display:flex;align-items:center;gap:8px;margin-bottom:6px'},
+        el('div',{style:'display:flex;align-items:center;gap:8px;margin-bottom:8px'},
           el('span',{class:'chip',style:'font-size:11px;font-weight:700'},prop.code),
-          el('div',{style:'flex:1;font-size:12px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis'},prop.name)
-        ),
-        el('div',{style:'display:flex;gap:12px;margin-bottom:8px'},
-          el('div',{style:'text-align:center'},
-            el('div',{style:'font-size:20px;font-weight:700;color:var(--ink-1);font-family:var(--mono)'},String(activeProjs.length)),
-            el('div',{style:'font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em'},'Active')
-          ),
-          el('div',{style:'text-align:center'},
-            el('div',{style:'font-size:20px;font-weight:700;color:var(--blue);font-family:var(--mono)'},String(ideas.length)),
-            el('div',{style:'font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em'},'Ideas')
-          )
-        )
-      );
-      if(lastNote) inner.append(el('div',{style:'font-size:11px;color:var(--ink-3);border-top:1px solid var(--line-2);padding-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'},
-        lastNote.date+' · '+lastNote.note));
+          el('div',{style:'flex:1;font-size:11.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis'},prop.name)),
+        el('div',{style:'display:flex;gap:16px;margin-bottom:8px'},
+          el('div',{},el('div',{style:'font-size:22px;font-weight:700;font-family:var(--mono)'},String(activeProjs.length)),el('div',{style:'font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em'},'Active')),
+          el('div',{},el('div',{style:'font-size:22px;font-weight:700;font-family:var(--mono);color:var(--blue)'},String(ideas.length)),el('div',{style:'font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em'},'Ideas'))));
+      if(allNotes[0]) inner.append(el('div',{style:'font-size:11px;color:var(--ink-3);border-top:1px solid var(--line-2);padding-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'},
+        allNotes[0].date+' · '+allNotes[0].note));
       card.append(inner);
       grid.append(card);
     });
@@ -913,234 +902,164 @@ function viewPipeline(){
     return wrap;
   }
 
-  /* ════════════════ PROPERTY DETAIL ════════════════ */
-  function propDetail(code){
+  /* ── DETAIL ── */
+  function buildDetail(code){
     const prop=S.properties.find(p=>p.code===code)||{code,name:code};
     const wrap=el('div',{});
 
-    // Back + header
-    const hdr=el('div',{style:'display:flex;align-items:center;gap:12px;margin-bottom:18px'});
-    hdr.append(
-      el('button',{class:'btn ghost sm',onclick:()=>{_selected=null;render();}},'← Back'),
+    // header
+    wrap.append(el('div',{style:'display:flex;align-items:center;gap:10px;margin-bottom:18px'},
+      el('button',{class:'btn ghost sm',onclick:()=>{_selected=null;drawView();}},'← Back'),
       el('span',{class:'chip',style:'font-size:12px;font-weight:700;background:'+pcolor(code)+';color:#fff;border-color:transparent'},code),
       el('h3',{style:'margin:0;font-size:16px'},prop.name),
       el('div',{style:'flex:1'}),
-      el('button',{class:'btn accent sm',onclick:()=>openNewItem(code)},'+ New Idea')
-    );
-    wrap.append(hdr);
+      el('button',{class:'btn accent sm',onclick:()=>openNewItem(code)},'+ New Idea')));
 
     // ── Active Projects ──
     const activeProjs=(S.projects||[]).filter(p=>p.property===code&&!isComplete(p)&&!p.isBudgetItem);
-    const projSect=el('div',{class:'panel',style:'margin-bottom:16px;padding:0;overflow:hidden'});
-    projSect.append(el('div',{class:'ph'},el('h3',{},'Active Projects'),el('div',{class:'sp'}),
-      el('span',{class:'bs-meta'},activeProjs.length+' project'+(activeProjs.length===1?'':'s'))));
-    const projBody=el('div',{class:'pad',style:'padding-top:8px'});
+    const psect=el('div',{class:'panel',style:'margin-bottom:16px;padding:0;overflow:hidden'});
+    psect.append(el('div',{class:'ph'},el('h3',{},'Active Projects'),el('div',{class:'sp'}),el('span',{class:'bs-meta'},activeProjs.length+' project'+(activeProjs.length===1?'':'s'))));
+    const pbody=el('div',{class:'pad',style:'padding-top:8px'});
     if(!activeProjs.length){
-      projBody.append(el('div',{style:'color:var(--ink-3);font-size:13px;padding:8px 0'},'No active projects for this property.'));
+      pbody.append(el('div',{style:'color:var(--ink-3);font-size:13px;padding:8px 0'},'No active projects for this property.'));
     } else {
       activeProjs.forEach(p=>{
-        let notesOpen=false;
+        const stageIdx=stage(p);
+        const stageLabel=isComplete(p)?'Done':(stageIdx>=0?LIFECYCLE[stageIdx].label:'Planned');
+        const notes=(p.progressNotes||[]).slice().sort((a,b)=>b.date>a.date?1:-1);
         const row=el('div',{style:'padding:10px 0;border-bottom:1px solid var(--line-2)'});
-        const top=el('div',{style:'display:flex;align-items:center;gap:8px;cursor:pointer',onclick:()=>openProject(p.id)});
-        const stageLabel=isComplete(p)?'Done':(stage(p)>=0?LIFECYCLE[stage(p)].label:'Planned');
-        top.append(
+        // top
+        const ptop=el('div',{style:'display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:4px',onclick:()=>openProject(p.id)});
+        ptop.append(
           el('div',{style:'flex:1'},
             el('span',{style:'font-size:13px;font-weight:600;color:var(--ink-1)'},p.name),
             p.contractor?el('span',{style:'font-size:11px;color:var(--ink-3);margin-left:8px'},'▷ '+p.contractor):''),
           el('span',{class:'chip',style:'font-size:10px'},stageLabel),
           p.anticipatedCost!=null?el('span',{style:'font-size:11px;color:var(--ink-3);white-space:nowrap'},fmt(p.anticipatedCost)):'',
-          el('span',{style:'font-size:11px;color:var(--ink-3)'},'→')
-        );
-        row.append(top);
-        const notes=(p.progressNotes||[]).slice().sort((a,b)=>b.date>a.date?1:-1);
+          el('span',{style:'font-size:11px;color:var(--ink-3)'},'→'));
+        row.append(ptop);
         if(notes.length){
-          const noteToggle=el('button',{class:'btn ghost sm',style:'font-size:11px;color:var(--ink-3);margin-top:5px',
-            onclick:e=>{e.stopPropagation();notesOpen=!notesOpen;notesWrap.style.display=notesOpen?'block':'none';noteToggle.textContent=notesOpen?'▲ Hide notes':'▾ '+notes.length+' note'+(notes.length===1?'':'s');}},
+          let open=false;
+          const tog=el('button',{class:'btn ghost sm',style:'font-size:11px;color:var(--ink-3)',
+            onclick:()=>{open=!open;nd.style.display=open?'block':'none';tog.textContent=(open?'▲ Hide':'▾ ')+notes.length+' note'+(notes.length===1?'':'s');}},
             '▾ '+notes.length+' note'+(notes.length===1?'':'s'));
-          const notesWrap=el('div',{style:'display:none;margin-top:6px;padding:8px 10px;background:var(--line-2);border-radius:6px'});
-          notes.forEach(n=>{
-            notesWrap.append(el('div',{style:'font-size:12px;color:var(--ink-2);margin-bottom:5px;line-height:1.4'},
-              el('span',{style:'font-size:10.5px;color:var(--ink-3);margin-right:6px'},n.date),n.note));
-          });
-          row.append(noteToggle,notesWrap);
+          const nd=el('div',{style:'display:none;margin-top:6px;padding:8px 10px;background:var(--line-2);border-radius:6px'});
+          notes.forEach(n=>nd.append(el('div',{style:'font-size:12px;color:var(--ink-2);margin-bottom:4px;line-height:1.4'},
+            el('span',{style:'font-size:10.5px;color:var(--ink-3);margin-right:6px'},n.date),n.note)));
+          row.append(tog,nd);
         }
-        projBody.append(row);
+        pbody.append(row);
       });
     }
-    projSect.append(projBody);
-    wrap.append(projSect);
+    psect.append(pbody); wrap.append(psect);
 
     // ── Pipeline Ideas ──
-    const ideas=(S.pipeline||[]).filter(i=>i.property===code);
-    const ideaSect=el('div',{class:'panel',style:'padding:0;overflow:hidden'});
-    ideaSect.append(el('div',{class:'ph'},el('h3',{},'Pipeline Ideas'),el('div',{class:'sp'}),
-      el('span',{class:'bs-meta'},ideas.length+' idea'+(ideas.length===1?'':'s'))));
-    const ideaBody=el('div',{class:'pad',style:'padding-top:8px'});
-    if(!ideas.length){
-      ideaBody.append(el('div',{style:'color:var(--ink-3);font-size:13px;padding:8px 0'},'No ideas yet — add one with + New Idea above.'));
-    } else {
-      ideas.forEach(item=>{
-        const st=PL_STATUS[item.status]||PL_STATUS.idea;
-        const pr=PL_PRI[item.priority]||PL_PRI.med;
-        let notesOpen=false;
-        const row=el('div',{style:'padding:10px 0;border-bottom:1px solid var(--line-2)'});
-        // Top row
-        const topRow=el('div',{style:'display:flex;align-items:flex-start;gap:8px'});
-        const mainCol=el('div',{style:'flex:1'});
-        // Name (click to edit)
-        const nameEl=el('div',{style:'font-size:13px;font-weight:600;color:var(--ink-1);cursor:text;margin-bottom:3px',
-          onclick:async e=>{e.stopPropagation();const v=prompt('Name:',item.name);if(v===null)return;item.name=v||item.name;await patchItem(item);nameEl.textContent=item.name;}},item.name);
-        // Meta chips
-        const metaRow=el('div',{style:'display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:4px'});
-        const stSel=el('select',{style:'font-size:11px;border:1px solid var(--line);border-radius:4px;padding:2px 5px;background:var(--panel);color:'+st.color+';cursor:pointer',
-          onchange:async e=>{item.status=e.target.value;await patchItem(item);row.remove();ideaBody.insertBefore(renderIdeaRow(item),ideaBody.firstChild);}});
-        Object.entries(PL_STATUS).forEach(([k,v])=>stSel.append(el('option',{value:k,...(item.status===k?{selected:''}:{})},v.label)));
-        metaRow.append(stSel,el('span',{style:'font-size:11px;color:var(--ink-3)'},pr.dot+' '+pr.label));
-        if(item.assignee) metaRow.append(el('span',{style:'font-size:11px;color:var(--ink-3)'},'👤 '+item.assignee));
-        if(item.targetDate) metaRow.append(el('span',{style:'font-size:11px;color:var(--ink-3)'},'📅 '+fmtDate(item.targetDate)));
-        if(item.estimatedCost!=null) metaRow.append(el('span',{style:'font-size:11px;color:var(--ink-3)'},'💰 ~'+fmt(item.estimatedCost)));
-        mainCol.append(nameEl,metaRow);
-        // Notes summary
-        const notes=[...(item.notes||[])].reverse();
-        if(notes.length){
-          const preview=el('div',{style:'font-size:11.5px;color:var(--ink-3);cursor:pointer;margin-top:2px',
-            onclick:e=>{e.stopPropagation();notesOpen=!notesOpen;notesDetail.style.display=notesOpen?'block':'none';preview.style.display=notesOpen?'none':'block';}},
-            '▾ '+notes[0].date+' · '+( notes[0].text||notes[0].note||'').slice(0,80)+(notes.length>1?' (+'+( notes.length-1)+' more)':''));
-          const notesDetail=el('div',{style:'display:none;margin-top:6px;padding:8px 10px;background:var(--line-2);border-radius:6px'});
-          notes.forEach(n=>{
-            const nr=el('div',{style:'display:flex;gap:6px;margin-bottom:5px;align-items:flex-start'});
-            nr.append(
-              el('div',{style:'flex:1;font-size:12px;color:var(--ink-2);line-height:1.4'},
-                el('span',{style:'font-size:10.5px;color:var(--ink-3);margin-right:5px'},n.date||''),n.text||n.note||''),
-              el('button',{class:'btn ghost sm',style:'color:var(--rust);padding:1px 4px;font-size:11px',
-                onclick:async e=>{e.stopPropagation();item.notes=(item.notes||[]).filter(x=>(x.id||x.text)!==(n.id||n.text));await patchItem(item);nr.remove();}},'✕')
-            );
-            notesDetail.append(nr);
-          });
-          // Add note inline
-          const ta=el('textarea',{placeholder:'Add a note…',rows:2,style:'width:100%;font-size:12px;border:1px solid var(--line);border-radius:5px;padding:6px 8px;resize:vertical;background:var(--panel);color:var(--ink-1);box-sizing:border-box;margin-top:6px'});
-          const addBtn=el('button',{class:'btn sm accent',style:'margin-top:4px',onclick:async e=>{
-            e.stopPropagation();const txt=ta.value.trim();if(!txt)return;
-            item.notes=[...(item.notes||[]),{id:uid('N'),text:txt,date:today()}];
-            await patchItem(item);ta.value='';
-            // rebuild notes
-            row.remove();ideaBody.insertBefore(buildIdeaRow(item),ideaBody.firstChild);
-          }},'Add Note');
-          notesDetail.append(ta,addBtn);
-          mainCol.append(preview,notesDetail);
-        } else {
-          // No notes yet — inline add
-          const ta=el('textarea',{placeholder:'Add first note…',rows:2,style:'width:100%;font-size:12px;border:1px solid var(--line);border-radius:5px;padding:6px 8px;resize:vertical;background:var(--panel);color:var(--ink-1);box-sizing:border-box;margin-top:4px'});
-          const addBtn=el('button',{class:'btn sm accent',style:'margin-top:4px',onclick:async e=>{
-            e.stopPropagation();const txt=ta.value.trim();if(!txt)return;
-            item.notes=[{id:uid('N'),text:txt,date:today()}];
-            await patchItem(item);
-            row.remove();ideaBody.insertBefore(buildIdeaRow(item),ideaBody.firstChild);
-          }},'Add Note');
-          mainCol.append(ta,addBtn);
-        }
-        // Actions
-        const acts=el('div',{style:'display:flex;flex-direction:column;gap:4px;flex-shrink:0'});
-        acts.append(
-          el('button',{class:'btn ghost sm',style:'font-size:10px',onclick:async e=>{
-            e.stopPropagation();if(!confirm('Promote "'+item.name+'" to a full project?'))return;
-            const r=await fetch('/api/pipeline/'+item.id+'/promote',{method:'POST'});
-            const out=await r.json();S=await API.get('/state');VIEW.tab='projects';render_app();toast('Promoted ✓');
-          }},'→ Project'),
-          el('button',{class:'btn ghost sm',style:'font-size:10px;color:var(--rust)',onclick:async e=>{
-            e.stopPropagation();if(!confirm('Delete?'))return;
-            await fetch('/api/pipeline/'+item.id,{method:'DELETE'});
-            const idx=(S.pipeline||[]).findIndex(x=>x.id===item.id);if(idx>-1)(S.pipeline||[]).splice(idx,1);
-            row.remove();
-          }},'✕')
-        );
-        topRow.append(mainCol,acts);
-        row.append(topRow);
-        return row;
-      });
-      function buildIdeaRow(item){ /* re-renders a single idea row — closure over ideaBody */
-        const tmp=el('div',{}); ideas.splice(ideas.findIndex(x=>x.id===item.id),1,item);
-        propDetail(code); // full re-render
-      }
-      ideas.forEach(item=>{ const r=buildRowFor(item); if(r)ideaBody.append(r); });
-    }
-    ideaSect.append(ideaBody);
-    wrap.append(ideaSect);
-    return wrap;
+    const isect=el('div',{class:'panel',style:'padding:0;overflow:hidden'});
+    isect.append(el('div',{class:'ph'},el('h3',{},'Pipeline Ideas'),el('div',{class:'sp'}),el('span',{class:'bs-meta',id:'_pl_meta_'+code})));
+    const ibody=el('div',{class:'pad',style:'padding-top:8px'});
 
-    function buildRowFor(item){
+    function refreshMeta(){
+      const m=document.getElementById('_pl_meta_'+code);
+      const cnt=(S.pipeline||[]).filter(i=>i.property===code).length;
+      if(m)m.textContent=cnt+' idea'+(cnt===1?'':'s');
+    }
+
+    function buildIdeaRow(item){
       const st=PL_STATUS[item.status]||PL_STATUS.idea;
       const pr=PL_PRI[item.priority]||PL_PRI.med;
       const row=el('div',{style:'padding:10px 0;border-bottom:1px solid var(--line-2)'});
       const topRow=el('div',{style:'display:flex;align-items:flex-start;gap:8px'});
-      const mainCol=el('div',{style:'flex:1'});
-      const nameEl=el('div',{style:'font-size:13px;font-weight:600;color:var(--ink-1);cursor:text;margin-bottom:3px',
-        onclick:async()=>{const v=prompt('Name:',item.name);if(v===null)return;item.name=v||item.name;await patchItem(item);nameEl.textContent=item.name;}},item.name);
-      const metaRow=el('div',{style:'display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:4px'});
+      const left=el('div',{style:'flex:1;min-width:0'});
+
+      // name
+      const nameEl=el('div',{style:'font-size:13px;font-weight:600;color:var(--ink-1);cursor:text;margin-bottom:4px',
+        onclick:async()=>{const v=prompt('Name:',item.name);if(v===null)return;item.name=v.trim()||item.name;await savePl(item);nameEl.textContent=item.name;}},item.name);
+
+      // meta row
+      const meta=el('div',{style:'display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px'});
       const stSel=el('select',{style:'font-size:11px;border:1px solid var(--line);border-radius:4px;padding:2px 5px;background:var(--panel);color:'+st.color+';cursor:pointer',
-        onchange:async e=>{item.status=e.target.value;await patchItem(item);row.replaceWith(buildRowFor(item));}});
+        onchange:async e=>{item.status=e.target.value;await savePl(item);row.replaceWith(buildIdeaRow(item));}});
       Object.entries(PL_STATUS).forEach(([k,v])=>stSel.append(el('option',{value:k,...(item.status===k?{selected:''}:{})},v.label)));
-      metaRow.append(stSel,el('span',{style:'font-size:11px;color:var(--ink-3)'},pr.dot+' '+pr.label));
-      if(item.assignee) metaRow.append(el('span',{style:'font-size:11px;color:var(--ink-3)'},'👤 '+item.assignee));
-      if(item.targetDate) metaRow.append(el('span',{style:'font-size:11px;color:var(--ink-3)'},'📅 '+fmtDate(item.targetDate)));
-      if(item.estimatedCost!=null) metaRow.append(el('span',{style:'font-size:11px;color:var(--ink-3)'},'💰 ~'+fmt(item.estimatedCost)));
-      mainCol.append(nameEl,metaRow);
+      meta.append(stSel,el('span',{style:'font-size:11px;color:var(--ink-3)'},pr.dot+' '+pr.label));
+      if(item.assignee)meta.append(el('span',{style:'font-size:11px;color:var(--ink-3)'},'👤 '+item.assignee));
+      if(item.targetDate)meta.append(el('span',{style:'font-size:11px;color:var(--ink-3)'},'📅 '+fmtDate(item.targetDate)));
+      if(item.estimatedCost!=null)meta.append(el('span',{style:'font-size:11px;color:var(--ink-3)'},'💰 ~'+fmt(item.estimatedCost)));
+
       // notes
-      const notes=[...(item.notes||[])].reverse();
+      const notesArr=[...(item.notes||[])].reverse();
       let notesOpen=false;
-      const notesArea=el('div',{style:'margin-top:4px'});
-      function drawNotesArea(){
-        notesArea.innerHTML='';
-        if(notes.length&&!notesOpen){
-          notesArea.append(el('div',{style:'font-size:11.5px;color:var(--ink-3);cursor:pointer',
-            onclick:()=>{notesOpen=true;drawNotesArea();}},
-            '▾ '+notes[0].date+' · '+(notes[0].text||notes[0].note||'').slice(0,90)+(notes.length>1?' (+'+( notes.length-1)+' more)':'')));
-        } else {
-          if(notes.length) notesArea.append(el('div',{style:'font-size:11px;color:var(--ink-3);cursor:pointer;margin-bottom:4px',onclick:()=>{notesOpen=false;drawNotesArea();}},'▲ Collapse'));
+      const notesDiv=el('div',{});
+      function redrawNotes(){
+        notesDiv.innerHTML='';
+        if(notesArr.length&&!notesOpen){
+          notesDiv.append(el('div',{style:'font-size:11.5px;color:var(--ink-3);cursor:pointer;margin-bottom:6px',
+            onclick:()=>{notesOpen=true;redrawNotes();}},
+            '▾ '+notesArr[0].date+' · '+(notesArr[0].text||notesArr[0].note||'').slice(0,90)+(notesArr.length>1?' (+'+(notesArr.length-1)+' more)':'')));
+        } else if(notesArr.length){
+          const colBtn=el('button',{class:'btn ghost sm',style:'font-size:11px;color:var(--ink-3);margin-bottom:4px',
+            onclick:()=>{notesOpen=false;redrawNotes();}},'▲ Collapse');
           const nd=el('div',{style:'padding:8px 10px;background:var(--line-2);border-radius:6px;margin-bottom:6px'});
-          notes.forEach(n=>{
+          notesArr.forEach(n=>{
             const nr=el('div',{style:'display:flex;gap:6px;margin-bottom:4px'});
-            nr.append(el('div',{style:'flex:1;font-size:12px;color:var(--ink-2);line-height:1.4'},el('span',{style:'font-size:10.5px;color:var(--ink-3);margin-right:5px'},n.date||''),n.text||n.note||''),
+            nr.append(
+              el('div',{style:'flex:1;font-size:12px;color:var(--ink-2);line-height:1.4'},el('span',{style:'font-size:10.5px;color:var(--ink-3);margin-right:5px'},n.date||''),n.text||n.note||''),
               el('button',{class:'btn ghost sm',style:'color:var(--rust);padding:1px 4px;font-size:11px',onclick:async()=>{
                 item.notes=(item.notes||[]).filter(x=>(x.id||x.text)!==(n.id||n.text));
-                await patchItem(item);const i=notes.indexOf(n);if(i>-1)notes.splice(i,1);drawNotesArea();}},'✕'));
+                await savePl(item);const i=notesArr.indexOf(n);if(i>-1)notesArr.splice(i,1);redrawNotes();}},'✕'));
             nd.append(nr);
           });
-          notesArea.append(nd);
+          notesDiv.append(colBtn,nd);
         }
         const ta=el('textarea',{placeholder:'Add a note…',rows:2,style:'width:100%;font-size:12px;border:1px solid var(--line);border-radius:5px;padding:6px 8px;resize:vertical;background:var(--panel);color:var(--ink-1);box-sizing:border-box'});
         const addBtn=el('button',{class:'btn sm accent',style:'margin-top:4px',onclick:async()=>{
           const txt=ta.value.trim();if(!txt)return;
           const n={id:uid('N'),text:txt,date:today()};
-          item.notes=[...(item.notes||[]),n];notes.unshift(n);
-          await patchItem(item);ta.value='';notesOpen=true;drawNotesArea();
+          item.notes=[...(item.notes||[]),n];notesArr.unshift(n);
+          await savePl(item);ta.value='';notesOpen=true;redrawNotes();
         }},'Add Note');
-        notesArea.append(ta,addBtn);
+        notesDiv.append(ta,addBtn);
       }
-      drawNotesArea();
-      mainCol.append(notesArea);
+      redrawNotes();
+
+      left.append(nameEl,meta,notesDiv);
+
+      // action buttons
       const acts=el('div',{style:'display:flex;flex-direction:column;gap:4px;flex-shrink:0'});
       acts.append(
-        el('button',{class:'btn ghost sm',style:'font-size:10px',onclick:async()=>{
+        el('button',{class:'btn ghost sm',style:'font-size:10px;white-space:nowrap',onclick:async()=>{
           if(!confirm('Promote "'+item.name+'" to a full project?'))return;
-          const r=await fetch('/api/pipeline/'+item.id+'/promote',{method:'POST'});
-          await r.json();S=await API.get('/state');VIEW.tab='projects';render_app();toast('Promoted ✓');
+          try{
+            const r=await fetch('/api/pipeline/'+item.id+'/promote',{method:'POST'});
+            if(!r.ok)throw new Error(await r.text());
+            S=await API.get('/state');
+            VIEW.tab='projects';render();
+          }catch(e){toast('Failed: '+e.message);}
         }},'→ Project'),
         el('button',{class:'btn ghost sm',style:'font-size:10px;color:var(--rust)',onclick:async()=>{
           if(!confirm('Delete "'+item.name+'"?'))return;
           await fetch('/api/pipeline/'+item.id,{method:'DELETE'});
           const idx=(S.pipeline||[]).findIndex(x=>x.id===item.id);if(idx>-1)(S.pipeline||[]).splice(idx,1);
-          row.remove();
-        }},'✕')
-      );
-      topRow.append(mainCol,acts);
+          row.remove();refreshMeta();
+        }},'✕'));
+
+      topRow.append(left,acts);
       row.append(topRow);
       return row;
     }
+
+    const ideas=(S.pipeline||[]).filter(i=>i.property===code);
+    if(!ideas.length){
+      ibody.append(el('div',{style:'color:var(--ink-3);font-size:13px;padding:8px 0'},'No ideas yet — add one with + New Idea above.'));
+    } else {
+      ideas.forEach(item=>ibody.append(buildIdeaRow(item)));
+    }
+    refreshMeta();
+    isect.append(ibody); wrap.append(isect);
+    return wrap;
   }
 
-  /* ════════════════ SHARED HELPERS ════════════════ */
-  async function patchItem(item){
+  /* ── SHARED ── */
+  async function savePl(item){
     try{
       const r=await fetch('/api/pipeline/'+item.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(item)});
       const updated=await r.json();
@@ -1156,17 +1075,17 @@ function viewPipeline(){
     const head=el('div',{class:'sh'},el('h2',{style:'font-size:16px;flex:1'},'New Pipeline Idea'),el('button',{class:'btn ghost',onclick:()=>scrim.remove()},'Cancel'));
     const bb=el('div',{class:'sb'});
     const nameInp=el('input',{placeholder:'What is the idea?',style:'width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink-1);margin-bottom:10px;box-sizing:border-box',oninput:e=>data.name=e.target.value});
-    const row2=el('div',{class:'frow',style:'gap:8px;margin-bottom:10px'});
-    const aInp=el('input',{placeholder:'Assignee',style:'flex:1;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink-1)',oninput:e=>data.assignee=e.target.value});
-    const cInp=el('input',{type:'number',placeholder:'Est. cost ($)',style:'width:130px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink-1)',oninput:e=>data.estimatedCost=e.target.value?+e.target.value:null});
-    const tInp=el('input',{type:'date',style:'width:150px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink-1)',oninput:e=>data.targetDate=e.target.value||null});
-    row2.append(aInp,cInp,tInp);
+    const r2=el('div',{class:'frow',style:'gap:8px;margin-bottom:10px'});
+    r2.append(
+      el('input',{placeholder:'Assignee',style:'flex:1;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink-1)',oninput:e=>data.assignee=e.target.value}),
+      el('input',{type:'number',placeholder:'Est. cost ($)',style:'width:130px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink-1)',oninput:e=>data.estimatedCost=e.target.value?+e.target.value:null}),
+      el('input',{type:'date',style:'width:150px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink-1)',oninput:e=>data.targetDate=e.target.value||null}));
     const priRow=el('div',{style:'display:flex;gap:6px;margin-bottom:12px'});
     ['high','med','low'].forEach(k=>{
       const on=data.priority===k;
-      const btn=el('button',{class:'chip',style:'cursor:pointer;font-size:11px;'+(on?'background:var(--blue);color:#fff;border-color:var(--blue)':''),
-        onclick:()=>{data.priority=k;priRow.querySelectorAll('button').forEach((b,i)=>{const kk=['high','med','low'][i];b.style.background=kk===k?'var(--blue)':'';b.style.color=kk===k?'#fff':'';b.style.borderColor=kk===k?'var(--blue)':'';});}},PL_PRI[k].dot+' '+PL_PRI[k].label);
-      priRow.append(btn);
+      priRow.append(el('button',{class:'chip',style:'cursor:pointer;font-size:11px;'+(on?'background:var(--blue);color:#fff;border-color:var(--blue)':''),
+        onclick:e=>{data.priority=k;priRow.querySelectorAll('button').forEach((b,i)=>{const kk=['high','med','low'][i];const sel=kk===k;b.style.background=sel?'var(--blue)':'';b.style.color=sel?'#fff':'';b.style.borderColor=sel?'var(--blue)':'';});}},
+        PL_PRI[k].dot+' '+PL_PRI[k].label));
     });
     const err=el('div',{style:'color:var(--rust);font-size:12px;min-height:16px'});
     const saveBtn=el('button',{class:'btn accent',onclick:async()=>{
@@ -1176,21 +1095,18 @@ function viewPipeline(){
         const r=await fetch('/api/pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
         const item=await r.json();
         if(!S.pipeline)S.pipeline=[];S.pipeline.unshift(item);
-        scrim.remove();_selected=data.property;render();toast('Added ✓');
+        scrim.remove();_selected=data.property;drawView();toast('Added ✓');
       }catch(e){err.textContent='Failed: '+e.message;saveBtn.disabled=false;saveBtn.textContent='Save';}
     }},'Save');
     bb.append(el('label',{style:'font-size:12px;color:var(--ink-3);display:block;margin-bottom:4px'},'Idea'),nameInp,
-      el('div',{style:'font-size:12px;color:var(--ink-3);margin-bottom:4px'},'Assignee / Est. Cost / Target Date'),row2,
+      el('div',{style:'font-size:12px;color:var(--ink-3);margin-bottom:4px'},'Assignee / Cost / Date'),r2,
       el('div',{style:'font-size:12px;color:var(--ink-3);margin-bottom:6px'},'Priority'),priRow,
       err,el('div',{style:'display:flex;justify-content:flex-end;margin-top:6px'},saveBtn));
     sheet.append(head,bb);scrim.append(sheet);document.body.append(scrim);
     setTimeout(()=>nameInp.focus(),50);
   }
 
-  // check if render_app exists, else fall back to render
-  function render_app(){ if(typeof render==='function')render(); }
-
-  render();
+  drawView();
   return{bar,body};
 }
 
