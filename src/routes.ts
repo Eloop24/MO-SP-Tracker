@@ -250,18 +250,26 @@ api.post('/tools/word-to-pdf', memUpload.single('file'), async (req, res) => {
   try {
     await writeFile(tmpIn, req.file.buffer);
     const loProfile = `${tmpdir()}/lo_profile_${stamp}`;
-    const { stdout: loOut, stderr: loErr } = await execFileAsync('libreoffice', [
-      '--headless',
-      '--norestore',
-      '--nofirststartwizard',
-      `--env:UserInstallation=file://${loProfile}`,
-      '--convert-to', 'pdf',
-      '--outdir', tmpdir(),
-      tmpIn,
-    ], { env: { ...process.env, HOME: '/tmp' }, timeout: 60000 });
-    if (loErr) console.log('[word-to-pdf] libreoffice stderr:', loErr);
-    if (loOut) console.log('[word-to-pdf] libreoffice stdout:', loOut);
-    const pdfBuf = await readFile(tmpOut);
+    // Run LibreOffice — tolerate non-zero exit (Java warning) by catching and
+    // falling through; we verify success by checking the output file exists.
+    try {
+      const { stdout: loOut, stderr: loErr } = await execFileAsync('libreoffice', [
+        '--headless',
+        '--norestore',
+        '--nofirststartwizard',
+        `-env:UserInstallation=file://${loProfile}`,
+        '--convert-to', 'pdf',
+        '--outdir', tmpdir(),
+        tmpIn,
+      ], { env: { ...process.env, HOME: '/tmp' }, timeout: 60000 });
+      if (loErr) console.log('[word-to-pdf] lo stderr:', loErr);
+      if (loOut) console.log('[word-to-pdf] lo stdout:', loOut);
+    } catch (loErr: any) {
+      // LibreOffice exits non-zero for Java warnings even on success; continue
+      // and let the readFile below confirm whether conversion actually worked.
+      console.log('[word-to-pdf] lo exit warning (may be ok):', loErr?.message);
+    }
+    const pdfBuf = await readFile(tmpOut);  // throws if conversion truly failed
     const outName = (req.file.originalname || 'document').replace(/\.docx?$/i, '.pdf');
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${outName}"`);
