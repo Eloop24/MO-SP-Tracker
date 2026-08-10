@@ -600,15 +600,17 @@ api.post('/import/gl/confirm', async (req, res) => {
     for (const g of lines) {
       // Upsert by control# — preserves existing ignore/assignment if re-pasting a corrected month
       if (g.control) {
+        // Match on control + property + remarks — same control can appear multiple times
+        // for different units (e.g. 5 vinyl invoices all under K-4056204 but different unit remarks)
         const existing = await c.query(
-          `SELECT id FROM gl_lines WHERE control = $1 AND property_code = $2`,
-          [g.control, g.property]
+          `SELECT id FROM gl_lines WHERE control = $1 AND property_code = $2 AND COALESCE(remarks,'') = COALESCE($3,'')`,
+          [g.control, g.property, g.remarks || null]
         );
         if (existing.rows.length) {
-          // Update fields that may have changed; leave ignored/linked_project_id intact
+          // Update amount if it changed (e.g. corrected invoice); preserve status/assignment
           await c.query(
-            `UPDATE gl_lines SET amount=$1, vendor=$2, date=$3, remarks=$4, gl_month=COALESCE(gl_month,$5) WHERE id=$6`,
-            [Number(g.amount) || 0, g.vendor || null, g.date || null, g.remarks || null, month, existing.rows[0].id]
+            `UPDATE gl_lines SET amount=$1, vendor=$2, date=$3, gl_month=COALESCE(gl_month,$4) WHERE id=$5`,
+            [Number(g.amount) || 0, g.vendor || null, g.date || null, month, existing.rows[0].id]
           );
           continue;
         }
