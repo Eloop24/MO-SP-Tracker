@@ -2773,22 +2773,22 @@ function viewPropertyBudgetTracker(code){
               sel.onchange=async()=>{
                 const pid=sel.value; if(!pid)return;
                 await API.send('PATCH','/gl/'+g.id+'/link',{projectId:pid,partial:false});
-                g.linkedProjectId=pid; rebuildGLTable();
+                await afterWrite('GL line assigned');
               };
               row.append(el('td',{style:'padding:4px 12px;white-space:nowrap'},
                 el('div',{style:'display:flex;gap:6px;align-items:center'},
                   sel,
                   el('button',{class:'btn ghost sm',style:'font-size:10px;white-space:nowrap',
-                    onclick:async e=>{e.stopPropagation();g.ignored=true;
+                    onclick:async e=>{e.stopPropagation();
                       await API.send('PATCH','/gl/'+g.id+'/ignore',{ignored:true});
-                      rebuildGLTable();}
+                      await afterWrite();}
                   },'Ignore'))));
             } else if(key==='ignored'){
               row.append(el('td',{style:'padding:4px 12px'},
                 el('button',{class:'btn ghost sm',style:'font-size:10px',
-                  onclick:async()=>{g.ignored=false;
+                  onclick:async()=>{
                     await API.send('PATCH','/gl/'+g.id+'/ignore',{ignored:false});
-                    rebuildGLTable();}
+                    await afterWrite();}
                 },'↩ Restore')));
             } else {
               // assigned
@@ -2797,9 +2797,9 @@ function viewPropertyBudgetTracker(code){
                 el('div',{style:'display:flex;gap:6px;align-items:center'},
                   el('span',{style:'font-size:11px;color:var(--green)'},'📂 '+(linked?(linked.name||linked.category||'').slice(0,22):'?')),
                   el('button',{class:'btn ghost sm',style:'font-size:10px',title:'Move back to Unassigned',
-                    onclick:async()=>{g.linkedProjectId=null;
+                    onclick:async()=>{
                       await API.send('PATCH','/gl/'+g.id+'/link',{projectId:null,partial:false});
-                      rebuildGLTable();}
+                      await afterWrite();}
                   },'↩'))));
             }
             tbb.append(row);
