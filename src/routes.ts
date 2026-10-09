@@ -12,6 +12,7 @@ const execFileAsync = promisify(execFile);
 import { loadStateInto } from './seed.js';
 import { parseGL, parseCushion } from './importers.js';
 import { buildContract, type ContractVars, type BidAttachment } from './contract.js';
+import { buildLargeContract, type LargeContractVars } from './contract-large.js';
 import { applyCostRules, uid, STEP_KEYS, CONTRACT_STEPS, type Project, type AppState } from '../shared/domain.js';
 
 export const api = Router();
@@ -232,6 +233,89 @@ api.post('/projects/:id/contract', async (req, res) => {
       [uid('C'), proj.id, proj.property_code, fileName, vars.ownerEntity, vars.contractorName, total, dnull(vars.effectiveDate), dnull(vars.termEndDate), b.scope || proj.name || '', fileKey]
     );
     // remember legal fields on the property for next time
+    if (b.rememberProperty !== false) {
+      await c.query('update properties set owner_entity=$1, address=$2, owner_notice_addr=$3 where code=$4',
+        [vars.ownerEntity, vars.propertyAddr, vars.ownerNoticeAddr, proj.property_code]);
+    }
+  });
+
+  res.json({ contractFileKey: fileKey, contractFileName: fileName, downloadUrl: `/api/files/${fileKey}?name=${encodeURIComponent(fileName)}` });
+});
+
+/* ---------- Generate Large Independent Contractor Agreement (≥$50K) ---------- */
+api.post('/projects/:id/contract/large', async (req, res) => {
+  const projRow = await query('select * from projects where id=$1', [req.params.id]);
+  if (!projRow.rowCount) return res.status(404).json({ error: 'project not found' });
+  const proj = projRow.rows[0];
+  const b = req.body || {};
+
+  const ANALYST_MAP: Record<string, string> = {
+    'Ethan Loop':   'ethan.loop@monarchinvestment.com',
+    'Avery Barnes': 'avery.barnes@monarchinvestment.com',
+  };
+  const analystName  = b.analystName || 'Ethan Loop';
+  const analystEmail = ANALYST_MAP[analystName] || 'ethan.loop@monarchinvestment.com';
+
+  const vars: LargeContractVars = {
+    effectiveDate:   b.effectiveDate   || '',
+    termEndDate:     b.termEndDate     || '',
+    ownerEntity:     b.ownerEntity     || '',
+    contractorName:  b.contractorName  || '',
+    propertyName:    b.propertyName    || '',
+    propertyAddr:    b.propertyAddr    || '',
+    ownerNoticeAddr: b.ownerNoticeAddr || b.propertyAddr || '',
+    contractorAddr:  b.contractorAddr  || '',
+    contractTotal:   b.contractTotal   || '',
+    contractType:    (b.contractType === 'tm' ? 'tm' : 'bid') as 'bid' | 'tm',
+    dailyReduction:  b.dailyReduction  || '',
+    workDays:        b.workDays        || '',
+    workHours:       b.workHours       || '',
+    paymentTerms:    b.paymentTerms    || '',
+    amName:          'Ben Hoglund',
+    amEmail:         'bhoglund@monarchinvestment.com',
+    analystName,
+    analystEmail,
+  };
+
+  if (!vars.ownerEntity || !vars.contractorName || !vars.contractTotal) {
+    return res.status(400).json({ error: 'ownerEntity, contractorName and contractTotal are required' });
+  }
+
+  const bidsRows = (await query('select * from bids where project_id=$1 order by approved desc, slot asc', [proj.id])).rows;
+  const attachments: BidAttachment[] = [];
+  for (const bd of bidsRows) {
+    if (!bd.file_key) continue;
+    const fr = await readFile(bd.file_key);
+    if (fr) attachments.push({ buffer: fr.bytes, name: bd.file_name || bd.file_key });
+  }
+
+  let pdf: Uint8Array;
+  try { pdf = await buildLargeContract(vars, attachments); }
+  catch (e: any) { return res.status(500).json({ error: 'large contract build failed: ' + (e?.message || e) }); }
+
+  const propRow = (await query('select contract_code from properties where code=$1', [proj.property_code])).rows[0];
+  const code = propRow?.contract_code || proj.property_code;
+  const total = nnull(String(vars.contractTotal).replace(/[^0-9.\-]/g, ''));
+  const fileName = monarchFileName(code, vars.effectiveDate, vars.contractorName, total, b.scope || proj.name || '', 'Unexecuted');
+  const fileKey = await storeFile(fileName, 'application/pdf', Buffer.from(pdf));
+
+  await tx(async (c) => {
+    let steps = proj.steps || {};
+    if (b.tickStep !== false) {
+      steps = { ...steps, contractGenerated: true };
+      const noContract = !!proj.no_contract;
+      STEP_KEYS.slice(0, STEP_KEYS.indexOf('contractGenerated')).forEach((k) => {
+        if (!(noContract && CONTRACT_STEPS.includes(k))) steps[k] = true;
+      });
+    }
+    await c.query('update projects set contract_file_key=$1, contract_file_name=$2, steps=$3, updated_at=now() where id=$4',
+      [fileKey, fileName, JSON.stringify(steps), proj.id]);
+    await c.query(
+      `insert into contracts(id,project_id,property_code,output_filename,owner_entity,contractor,total,effective_date,term_end,scope,file_key)
+       values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [uid('C'), proj.id, proj.property_code, fileName, vars.ownerEntity, vars.contractorName, total,
+       dnull(vars.effectiveDate), dnull(vars.termEndDate), b.scope || proj.name || '', fileKey]
+    );
     if (b.rememberProperty !== false) {
       await c.query('update properties set owner_entity=$1, address=$2, owner_notice_addr=$3 where code=$4',
         [vars.ownerEntity, vars.propertyAddr, vars.ownerNoticeAddr, proj.property_code]);
