@@ -1217,7 +1217,29 @@ async function spGetDir(propCode){
   return newH;
 }
 async function spMkdirs(root,...parts){let d=root;for(const p of parts)d=await d.getDirectoryHandle(p,{create:true});return d;}
-function spCatFolder(cat){const c=(cat||'').toLowerCase();if(c.includes('roof')||c.includes('7347'))return 'Roofing';if(c.includes('drain')||c.includes('plumb')||c.includes('7339'))return 'Drainage';if(c.includes('carpet')||c.includes('vinyl')||c.includes('floor')||c.includes('7328'))return 'Flooring - Vinyl';if(c.includes('paint')||c.includes('breezeway'))return 'Painting';if(c.includes('stair')||c.includes('concrete')||c.includes('7373'))return 'Concrete - Stairs';if(c.includes('landscap')||c.includes('7334'))return 'Landscaping';if(c.includes('gutter'))return 'Gutters';return 'Miscellaneous';}
+function spCatFolder(cat,name){
+  // Strip GL code prefix e.g. "7347 - SP ROOFING" -> "Roofing"
+  const stripped=(cat||'').replace(/^\d{4}\s*-\s*SP\s*/i,'').trim();
+  if(stripped&&stripped.toUpperCase()!=='GENERAL'){
+    return stripped.charAt(0).toUpperCase()+stripped.slice(1).toLowerCase();
+  }
+  // Auto-detect from project name
+  const n=(name||'').toLowerCase();
+  if(n.includes('roof'))return 'Roofing';
+  if(n.includes('gutter'))return 'Gutters';
+  if(n.includes('drain'))return 'Drainage';
+  if(n.includes('vinyl')||n.includes('carpet')||n.includes('floor'))return 'Flooring';
+  if(n.includes('stucco'))return 'Stucco';
+  if(n.includes('paint')||n.includes('breezeway'))return 'Painting';
+  if(n.includes('asphalt')||n.includes('paving')||n.includes('seal')||n.includes('stripe'))return 'Asphalt';
+  if(n.includes('landscap')||n.includes('mulch')||n.includes('tree'))return 'Landscaping';
+  if(n.includes('deck')||n.includes('walkway')||n.includes('concrete')||n.includes('stair'))return 'Concrete';
+  if(n.includes('fence'))return 'Fencing';
+  if(n.includes('electric')||n.includes('lighting'))return 'Electrical';
+  if(n.includes('plumb')||n.includes('water')||n.includes('sewer'))return 'Plumbing';
+  // Unknown — ask user
+  return prompt('Folder name for "'+name+'" (e.g. Roofing, Stucco, Asphalt):')||'Miscellaneous';
+}
 
 function openProject(id,preset){
   const isNew=!id;
@@ -1790,9 +1812,11 @@ function openProject(id,preset){
             const fName=s.key==='contractSaved'?p.contractFileName:p.lienFileName;
             if(fKey&&fName){
               try{
+                // User picks their 2026 Contractor Statements folder; we create only the category subfolder inside it
                 const dir=await spGetDir(p.property);
                 if(dir){
-                  const sub=await spMkdirs(dir,'Contracts','Contractor Statements','2026',spCatFolder(p.category));
+                  const catFolder=spCatFolder(p.category,p.name);
+                  const sub=await spMkdirs(dir,catFolder);
                   const resp=await fetch(`/api/files/${fKey}?name=${encodeURIComponent(fName)}`);
                   if(resp.ok){const buf=await resp.arrayBuffer();const fh=await sub.getFileHandle(fName,{create:true});const wr=await fh.createWritable();await wr.write(buf);await wr.close();toast('Saved to SharePoint ✓');}
                   else toast('Could not download file');
