@@ -1513,7 +1513,8 @@ function openProject(id,preset){
       propertyName:prop.name||'', propertyAddr:prop.address||'',
       ownerNoticeAddr:prop.ownerNoticeAddr||prop.address||'', contractorAddr:'',
       contractTotal:usd(total), unit:'', scope:p.name||'',
-      dailyReduction:'', workDays:'', workHours:''
+      dailyReduction:'', workDays:'', workHours:'',
+      contractSize:total>=50000?'large':'small', analystName:'Ethan Loop', contractType:'bid'
     };
     const scrim=el('div',{class:'scrim modal-center',onclick:e=>{if(e.target===scrim)scrim.remove();}});
     const sheet=el('div',{class:'sheet'});
@@ -1533,6 +1534,43 @@ function openProject(id,preset){
     sect('Contract');
     bb.append(el('div',{class:'frow'}, f('Effective date (MM/DD/YYYY)','effectiveDate'), f('Term end date (MM/DD/YYYY)','termEndDate')));
     bb.append(el('div',{class:'frow'}, f('Contract total','contractTotal'), f('Unit # (optional)','unit',{ph:'e.g. 201'})));
+    // --- Contract size (auto-selects Large at >=50K) ---
+    (()=>{
+      const sizeRow=el('div',{class:'field'});
+      sizeRow.append(el('label',{},'Contract size'));
+      const szNote=el('span',{style:'font-size:10.5px;color:var(--ink-3);margin-top:3px;display:block'},'Large contracts (≥$50K) include surety bonds, elevated insurance, Owner\'s Reps, and Exhibit E.');
+      const sizeWrap=el('div',{style:'display:flex;gap:8px;margin-top:6px'});
+      function refreshSize(){
+        sizeWrap.querySelectorAll('button').forEach(b2=>{
+          const isActive=b2.dataset.sz===data.contractSize;
+          b2.className='btn'+(isActive?' accent':'');
+        });
+        analystRow.style.display=data.contractSize==='large'?'':'none';
+        ctypeRow.style.display=data.contractSize==='large'?'':'none';
+      }
+      ['small','large'].forEach(s=>{
+        const btn=el('button',{'data-sz':s,style:'flex:1',onclick:()=>{data.contractSize=s;refreshSize();}},
+          s==='small'?'Small (<$50K)':'Large (≥$50K)');
+        sizeWrap.append(btn);
+      });
+      sizeRow.append(sizeWrap,szNote); bb.append(sizeRow);
+      // Analyst dropdown (large only)
+      const analystRow=el('div',{class:'field',style:data.contractSize==='large'?'':'display:none'});
+      analystRow.append(el('label',{},"Analyst (Owner's Rep)"));
+      const analystSel=el('select',{style:'width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel)',
+        onchange:e=>data.analystName=e.target.value});
+      ['Ethan Loop','Avery Barnes'].forEach(n=>analystSel.append(el('option',{value:n},n)));
+      analystRow.append(analystSel,el('span',{style:'font-size:10.5px;color:var(--ink-3);margin-top:3px;display:block'},'AM: Ben Hoglund (fixed for all large contracts)'));
+      bb.append(analystRow);
+      // Contract type (large only)
+      const ctypeRow=el('div',{class:'field',style:data.contractSize==='large'?'':'display:none'});
+      ctypeRow.append(el('label',{},'Contract type'));
+      const ctypeSel=el('select',{style:'width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel)',
+        onchange:e=>data.contractType=e.target.value});
+      [['bid','Bid contract'],['tm','Time & materials']].forEach(([v,l])=>ctypeSel.append(el('option',{value:v},l)));
+      ctypeRow.append(ctypeSel); bb.append(ctypeRow);
+      refreshSize();
+    })();
     // Compute paymentTerms from project's paymentStructure
     const _ps=p.paymentStructure||{type:'full'};
     const _total=p.actualCost!=null?p.actualCost:(p.bids.find(b=>b.approved&&b.amount!=null)?.amount??p.anticipatedCost??0);
@@ -1598,7 +1636,8 @@ function openProject(id,preset){
       genBtn.disabled=true; genBtn.textContent='Generating…'; err.textContent='';
       try{
         try{ await saveProjectSilent(p); }catch(se){ console.warn('pre-save before contract failed:',se.message); }
-        const r=await fetch('/api/projects/'+p.id+'/contract',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+        const _endpoint=data.contractSize==='large'?'/api/projects/'+p.id+'/contract/large':'/api/projects/'+p.id+'/contract';
+        const r=await fetch(_endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
         if(!r.ok){ const e=await r.json().catch(()=>({})); err.textContent=e.error||'Generation failed.'; genBtn.disabled=false; genBtn.textContent='Generate contract'; return; }
         const out=await r.json();
         const a=el('a',{href:out.downloadUrl}); document.body.append(a); a.click(); a.remove();
