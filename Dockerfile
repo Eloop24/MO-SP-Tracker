@@ -1,11 +1,14 @@
 FROM node:20-slim
 
-# LibreOffice writer only — for DOCX → PDF conversion
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-      libreoffice-writer \
-      libreoffice-common \
-      fonts-liberation \
+# LibreOffice for DOCX to PDF conversion
+RUN apt-get update && \\
+    apt-get install -y --no-install-recommends \\
+      libreoffice-writer \\
+      libreoffice-common \\
+      fonts-liberation \\
+      fonts-dejavu-core \\
+      fontconfig \\
+    && fc-cache -f \\
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
