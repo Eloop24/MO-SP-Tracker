@@ -3,8 +3,8 @@ import AdmZip from 'adm-zip';
 import { CONTRACT_CONFIG } from '../shared/domain.js';
 
 /* =============================================================================
-   Independent Contractor Agreement â LARGE CONTRACT PDF generator
-   For contracts â¥ $50,000. Based on the expanded Monarch DOCX template:
+   Independent Contractor Agreement Ã¢ÂÂ LARGE CONTRACT PDF generator
+   For contracts Ã¢ÂÂ¥ $50,000. Based on the expanded Monarch DOCX template:
    - Higher insurance limits (CGL $1M/$5M + $5M umbrella)
    - Subcontractors' insurance sub-section
    - Surety Bonds section
@@ -104,7 +104,7 @@ export async function buildLargeContract(vars: LargeContractVars, attachments: B
       ln.forEach((w, i) => {
         if (i) x += spaceW(w.bold) + (opts.align === 'center' ? 0 : extra);
         page.drawText(w.text, { x, y, size, font: fontFor(w.bold), color: rgb(0, 0, 0) });
-        x += w[(w);
+        x += wW(w);
       });
       y -= lead;
     });
@@ -142,7 +142,7 @@ export async function buildLargeContract(vars: LargeContractVars, attachments: B
   if (vars.contractType === 'bid') {
     paragraph(`"Contract Sum": ${vars.contractTotal}`, { indent: 18, gap: 10 });
   } else {
-    paragraph('"Contract Sum": Time and materials contract â see Section 4.a below.', { indent: 18, gap: 10 });
+    paragraph('"Contract Sum": Time and materials contract Ã¢ÂÂ see Section 4.a below.', { indent: 18, gap: 10 });
   }
 
   // ---------- Numbered sections ----------
@@ -497,7 +497,7 @@ function buildLargeSections(v: LargeContractVars): SectionDef[] {
   ];
 }
 
-/* ---------- Exhibit C â Conditional Lien Waiver ---------- */
+/* ---------- Exhibit C Ã¢ÂÂ Conditional Lien Waiver ---------- */
 function exhibitCL(v: LargeContractVars): string {
   return `TO:       ${v.ownerEntity}
           ${v.ownerNoticeAddr}
@@ -515,7 +515,7 @@ Name:   ___________________________________
 Title:  ___________________________________`;
 }
 
-/* ---------- Exhibit D â Final Lien Waiver ---------- */
+/* ---------- Exhibit D Ã¢ÂÂ Final Lien Waiver ---------- */
 function exhibitDL(v: LargeContractVars): string {
   return `State of:
 County of:
@@ -531,7 +531,7 @@ Title:     ___________________
 Date:      ___________________`;
 }
 
-/* ---------- Exhibit E â Change Order ---------- */
+/* ---------- Exhibit E Ã¢ÂÂ Change Order ---------- */
 function exhibitEL(v: LargeContractVars): string {
   return `PROJECT:    ${v.propertyName}
 ADDRESS:    ${v.propertyAddr}
